@@ -1,137 +1,270 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Detect and Crop Rectangle</title>
-  <style>
-    body { font-family: sans-serif; text-align: center; }
-    #video, #canvas, #croppedCanvas {
-      max-width: 95vw;
-      margin-top: 10px;
-      border: 2px solid #000;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Numeric Barcode Detector</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            touch-action: manipulation;
+        }
+        #scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        #video {
+            width: 100%;
+            display: block;
+            background: #000;
+        }
+        #canvas {
+            display: none;
+        }
+        #target-box {
+            position: absolute;
+            border: 3px solid #00FF00;
+            background: rgba(0, 255, 0, 0.2);
+            display: none;
+            pointer-events: none;
+        }
+        .button-container {
+            text-align: center;
+            margin: 15px 0;
+        }
+        button {
+            padding: 12px 20px;
+            margin: 0 5px;
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        #results {
+            text-align: center;
+            margin-top: 15px;
+        }
+        #croppedResult {
+            max-width: 100%;
+            border: 2px solid #4CAF50;
+        }
+        #status {
+            margin: 10px 0;
+            color: #666;
+            min-height: 20px;
+        }
+    </style>
 </head>
 <body>
-  <h2>Tap to Detect & Crop Rectangle</h2>
-  <video id="video" autoplay playsinline></video><br>
-  <canvas id="canvas"></canvas><br>
-  <canvas id="croppedCanvas"></canvas>
+    <h2 style="text-align:center;">Numeric Barcode Scanner</h2>
+    <p id="status">Tap on the barcode numbers to detect</p>
+    
+    <div id="scanner-container">
+        <video id="video" playsinline autoplay></video>
+        <canvas id="canvas"></canvas>
+        <div id="target-box"></div>
+    </div>
+    
+    <div class="button-container">
+        <button id="startButton">Start Camera</button>
+        <button id="captureButton" disabled>Capture</button>
+    </div>
+    
+    <div id="results">
+        <img id="croppedResult" style="display:none;">
+    </div>
 
-  <!-- Make sure opencv.js is downloaded and in same folder -->
-  <script src="opencv.js"></script>
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const croppedCanvas = document.getElementById('croppedCanvas');
+    <script>
+        // Elements
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const targetBox = document.getElementById('target-box');
+        const startButton = document.getElementById('startButton');
+        const captureButton = document.getElementById('captureButton');
+        const croppedResult = document.getElementById('croppedResult');
+        const statusText = document.getElementById('status');
+        
+        // Variables
+        let stream = null;
+        let detectionBox = null;
 
-    async function startCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      video.srcObject = stream;
-    }
+        // Start camera
+        startButton.addEventListener('click', async () => {
+            try {
+                statusText.textContent = "Starting camera...";
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                video.srcObject = stream;
+                video.onplaying = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    startButton.disabled = true;
+                    captureButton.disabled = false;
+                    statusText.textContent = "Tap on the barcode numbers to detect";
+                };
+            } catch (err) {
+                statusText.textContent = "Camera error: " + err.message;
+            }
+        });
 
-    function getLargestRectContour(contours) {
-      let maxArea = 0;
-      let bestContour = null;
-      for (let i = 0; i < contours.size(); i++) {
-        const cnt = contours.get(i);
-        const approx = new cv.Mat();
-        cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
-        if (approx.rows === 4 && cv.isContourConvex(approx)) {
-          const area = cv.contourArea(approx);
-          if (area > maxArea) {
-            maxArea = area;
-            bestContour = approx.clone();
-          }
+        // Handle screen touches/clicks
+        video.addEventListener('click', handleTap);
+        video.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleTap(e.touches[0]);
+        });
+
+        function handleTap(event) {
+            if (!stream) return;
+            
+            const rect = video.getBoundingClientRect();
+            const x = ((event.clientX || event.pageX) - rect.left) / rect.width * video.videoWidth;
+            const y = ((event.clientY || event.pageY) - rect.top) / rect.height * video.videoHeight;
+            
+            statusText.textContent = "Detecting barcode...";
+            setTimeout(() => detectNumericBarcode(x, y), 100);
         }
-        approx.delete();
-      }
-      return bestContour;
-    }
 
-    function cropFromContour(src, contour) {
-      const pts = [];
-      for (let i = 0; i < 4; i++) {
-        pts.push({ x: contour.intPtr(i, 0)[0], y: contour.intPtr(i, 0)[1] });
-      }
+        // Specialized numeric barcode detection
+        function detectNumericBarcode(tapX, tapY) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            // Convert to grayscale and enhance contrast
+            const grayData = new Uint8Array(imageData.width * imageData.height);
+            for (let i = 0, j = 0; i < imageData.data.length; i += 4, j++) {
+                grayData[j] = Math.round(0.299 * imageData.data[i] + 
+                               0.587 * imageData.data[i+1] + 
+                               0.114 * imageData.data[i+2]);
+            }
+            
+            // Find the horizontal line of numbers (main barcode area)
+            let numberLineY = findNumberLineY(grayData, tapX, tapY, imageData.width, imageData.height);
+            if (numberLineY === -1) {
+                statusText.textContent = "Couldn't find numbers. Tap directly on the barcode numbers.";
+                targetBox.style.display = 'none';
+                return;
+            }
+            
+            // Find left and right edges of the barcode
+            const edges = findBarcodeEdges(grayData, numberLineY, imageData.width);
+            
+            if (edges.left < edges.right) {
+                detectionBox = {
+                    x: edges.left,
+                    y: numberLineY - 20, // Include some space above numbers
+                    width: edges.right - edges.left,
+                    height: 40 // Standard height for numeric barcodes
+                };
+                
+                updateTargetBox();
+                statusText.textContent = "Barcode detected! Click Capture or tap to adjust";
+            } else {
+                statusText.textContent = "Couldn't detect barcode edges. Try again.";
+                targetBox.style.display = 'none';
+            }
+        }
 
-      // Sort points (top-left, top-right, bottom-right, bottom-left)
-      pts.sort((a, b) => a.y - b.y);
-      const [tl, tr] = pts.slice(0, 2).sort((a, b) => a.x - b.x);
-      const [bl, br] = pts.slice(2).sort((a, b) => a.x - b.x);
+        function findNumberLineY(grayData, tapX, tapY, width, height) {
+            // Scan vertically up/down from tap point to find the number line
+            const sampleWidth = 100; // pixels to sample horizontally
+            const startX = Math.max(0, tapX - sampleWidth/2);
+            const endX = Math.min(width-1, tapX + sampleWidth/2);
+            
+            let bestY = -1;
+            let bestContrast = 0;
+            
+            // Scan above tap point
+            for (let y = Math.min(tapY, height-20); y > 10; y--) {
+                let contrast = 0;
+                for (let x = startX; x < endX; x++) {
+                    const i = y * width + x;
+                    contrast += Math.abs(grayData[i] - grayData[i + width]); // Vertical contrast
+                }
+                
+                if (contrast > bestContrast) {
+                    bestContrast = contrast;
+                    bestY = y;
+                }
+            }
+            
+            return bestY;
+        }
 
-      const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y
-      ]);
-      const width = Math.max(
-        Math.hypot(tr.x - tl.x, tr.y - tl.y),
-        Math.hypot(br.x - bl.x, br.y - bl.y)
-      );
-      const height = Math.max(
-        Math.hypot(bl.x - tl.x, bl.y - tl.y),
-        Math.hypot(br.x - tr.x, br.y - tr.y)
-      );
+        function findBarcodeEdges(grayData, y, width) {
+            // Scan horizontally to find the barcode edges
+            const scanLine = y * width;
+            const threshold = 40;
+            let leftEdge = width;
+            let rightEdge = 0;
+            let inBarcode = false;
+            
+            for (let x = 10; x < width - 10; x++) {
+                const diff = Math.abs(grayData[scanLine + x] - grayData[scanLine + x + 1]);
+                
+                if (diff > threshold) {
+                    if (!inBarcode) {
+                        leftEdge = Math.min(leftEdge, x);
+                        inBarcode = true;
+                    }
+                    rightEdge = Math.max(rightEdge, x);
+                } else {
+                    inBarcode = false;
+                }
+            }
+            
+            return { left: leftEdge, right: rightEdge };
+        }
 
-      const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        0, 0, width, 0, width, height, 0, height
-      ]);
+        function updateTargetBox() {
+            const rect = video.getBoundingClientRect();
+            targetBox.style.left = (detectionBox.x / canvas.width * rect.width) + 'px';
+            targetBox.style.top = (detectionBox.y / canvas.height * rect.height) + 'px';
+            targetBox.style.width = (detectionBox.width / canvas.width * rect.width) + 'px';
+            targetBox.style.height = (detectionBox.height / canvas.height * rect.height) + 'px';
+            targetBox.style.display = 'block';
+        }
 
-      const M = cv.getPerspectiveTransform(srcTri, dstTri);
-      const dst = new cv.Mat();
-      cv.warpPerspective(src, dst, M, new cv.Size(width, height));
-
-      srcTri.delete(); dstTri.delete(); M.delete();
-      return dst;
-    }
-
-    function processFrame() {
-      const width = video.videoWidth;
-      const height = video.videoHeight;
-      canvas.width = width;
-      canvas.height = height;
-
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, width, height);
-
-      let src = cv.imread(canvas);
-      let gray = new cv.Mat();
-      let blurred = new cv.Mat();
-      let edged = new cv.Mat();
-      let contours = new cv.MatVector();
-      let hierarchy = new cv.Mat();
-
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-      cv.Canny(blurred, edged, 75, 200);
-      cv.findContours(edged, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-      const bestContour = getLargestRectContour(contours);
-      if (bestContour) {
-        const color = new cv.Scalar(0, 255, 0, 255); // Green
-        const contoursDraw = new cv.MatVector();
-        contoursDraw.push_back(bestContour);
-        cv.drawContours(src, contoursDraw, -1, color, 3);
-
-        const cropped = cropFromContour(src, bestContour);
-        cv.imshow(croppedCanvas, cropped);
-        cropped.delete();
-        contoursDraw.delete();
-        bestContour.delete();
-      } else {
-        alert("No rectangular contour found.");
-      }
-
-      cv.imshow(canvas, src);
-
-      // Cleanup
-      src.delete(); gray.delete(); blurred.delete(); edged.delete();
-      contours.delete(); hierarchy.delete();
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      startCamera();
-      video.addEventListener('click', processFrame);
-    });
-  </script>
+        // Capture the selected area
+        captureButton.addEventListener('click', () => {
+            if (!detectionBox) return;
+            
+            // Crop with 25% horizontal padding and 50% vertical padding
+            const padX = detectionBox.width * 0.25;
+            const padY = detectionBox.height * 0.5;
+            
+            const cropX = Math.max(0, detectionBox.x - padX);
+            const cropY = Math.max(0, detectionBox.y - padY);
+            const cropWidth = Math.min(canvas.width - cropX, detectionBox.width + 2*padX);
+            const cropHeight = Math.min(canvas.height - cropY, detectionBox.height + 2*padY);
+            
+            // Create cropped image
+            const croppedCanvas = document.createElement('canvas');
+            croppedCanvas.width = cropWidth;
+            croppedCanvas.height = cropHeight;
+            const croppedCtx = croppedCanvas.getContext('2d');
+            croppedCtx.drawImage(
+                canvas, 
+                cropX, cropY, cropWidth, cropHeight, 
+                0, 0, cropWidth, cropHeight
+            );
+            
+            // Display result
+            croppedResult.src = croppedCanvas.toDataURL('image/jpeg');
+            croppedResult.style.display = 'block';
+            statusText.textContent = "Barcode captured!";
+        });
+    </script>
 </body>
 </html>
