@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Scanner Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 100%;
+            padding: 20px;
+            margin: 0 auto;
+        }
+        #scanner-container {
+            position: relative;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        #video {
+            width: 100%;
+            background: #000;
+        }
+        #canvas {
+            display: none;
+        }
+        button {
+            padding: 10px 15px;
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #results {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Barcode Scanner Test</h1>
+    
+    <div id="scanner-container">
+        <video id="video" playsinline autoplay></video>
+        <canvas id="canvas"></canvas>
+    </div>
+    
+    <button id="startButton">Start Scanner</button>
+    <button id="captureButton" disabled>Capture Best Barcode</button>
+    
+    <div id="results">
+        <h3>Best Barcode:</h3>
+        <img id="bestBarcode" style="max-width: 100%; display: none;">
+        <p id="status">Status: Ready</p>
+    </div>
+
+    <script>
+        // DOM elements
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startButton = document.getElementById('startButton');
+        const captureButton = document.getElementById('captureButton');
+        const bestBarcodeImg = document.getElementById('bestBarcode');
+        const statusText = document.getElementById('status');
+        
+        // Variables to track the best barcode frame
+        let bestBarcodeFrame = null;
+        let bestScore = 0;
+        let scanInterval = null;
+        const scannerThreshold = 30; // Quality threshold
+        
+        // Start camera when button is clicked
+        startButton.addEventListener('click', async () => {
+            try {
+                statusText.textContent = "Status: Starting camera...";
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment', // Use rear camera
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+                
+                video.srcObject = stream;
+                video.play();
+                
+                // Set canvas dimensions to match video
+                video.addEventListener('playing', () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                });
+                
+                startButton.disabled = true;
+                captureButton.disabled = false;
+                statusText.textContent = "Status: Scanning... Point camera at barcode";
+                
+                // Start scanning frames periodically
+                scanInterval = setInterval(() => {
+                    processVideoFrame();
+                }, 500); // Process every 500ms
+                
+            } catch (error) {
+                statusText.textContent = "Error: " + error.message;
+                console.error("Camera error:", error);
+            }
+        });
+        
+        // Capture the best barcode when button is clicked
+        captureButton.addEventListener('click', () => {
+            if (scanInterval) {
+                clearInterval(scanInterval);
+                scanInterval = null;
+            }
+            
+            if (bestBarcodeFrame) {
+                bestBarcodeImg.src = bestBarcodeFrame;
+                bestBarcodeImg.style.display = 'block';
+                statusText.textContent = "Status: Best barcode captured!";
+                
+                // Here you would normally send to backend
+                // sendBestBarcodeToBackend();
+            } else {
+                statusText.textContent = "Status: No suitable barcode found";
+            }
+            
+            captureButton.disabled = true;
+        });
+        
+        // Process video frames to find best barcode
+        function processVideoFrame() {
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Simplified quality evaluation (just for testing)
+            const currentScore = Math.random() * 100; // Replace with real quality evaluation
+            
+            if (currentScore > bestScore && currentScore > scannerThreshold) {
+                bestScore = currentScore;
+                bestBarcodeFrame = canvas.toDataURL('image/jpeg');
+                statusText.textContent = `Status: Scanning... Best quality: ${Math.round(bestScore)}`;
+            }
+        }
+        
+        // For demonstration, we're not actually implementing the backend send
+        // but you can uncomment the sendBestBarcodeToBackend() call above
+    </script>
+</body>
+</html>
