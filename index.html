@@ -3,35 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Barcode Scanner</title>
+    <title>Advanced Barcode Scanner</title>
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; }
-        #scanner-container { position: relative; width: 100%; }
-        #video { width: 100%; background: #000; }
-        #canvas { display: none; }
-        button { padding: 10px 15px; background: #4285f4; color: white; border: none; border-radius: 4px; margin: 5px; }
-        #results { margin-top: 20px; }
-        #croppedBarcode { max-width: 100%; border: 2px solid green; }
+        #scanner-container { position: relative; width: 100%; max-width: 500px; margin: 0 auto; }
+        #video { width: 100%; background: #000; border: 2px solid #333; }
+        canvas { display: none; }
+        button { padding: 12px 20px; margin: 10px 5px; background: #4285f4; color: white; border: none; border-radius: 5px; font-size: 16px; }
+        #results { margin-top: 20px; text-align: center; }
+        #croppedBarcode { max-width: 100%; margin-top: 15px; border: 2px solid #4CAF50; }
+        #debug { font-family: monospace; background: #f5f5f5; padding: 10px; margin-top: 15px; }
+        .scanning { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
-    <h1>Barcode Scanner</h1>
+    <h1 style="text-align: center;">Barcode Scanner</h1>
     
     <div id="scanner-container">
         <video id="video" playsinline autoplay></video>
         <canvas id="canvas"></canvas>
     </div>
     
-    <button id="startButton">Start Scanner</button>
-    <button id="captureButton" disabled>Capture Barcode</button>
+    <div style="text-align: center;">
+        <button id="startButton">Start Scanner</button>
+        <button id="captureButton" disabled>Capture Barcode</button>
+    </div>
     
     <div id="results">
-        <h3>Cropped Barcode:</h3>
+        <div id="status">Status: Ready</div>
         <img id="croppedBarcode" style="display: none;">
-        <p id="status">Status: Ready</p>
+        <div id="debug"></div>
     </div>
 
-    <!-- Add jsQR library -->
+    <!-- Using jsQR for better QR/2D code detection -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     
     <script>
@@ -43,20 +48,38 @@
         const captureButton = document.getElementById('captureButton');
         const croppedBarcode = document.getElementById('croppedBarcode');
         const statusText = document.getElementById('status');
+        const debugInfo = document.getElementById('debug');
         
         let scanningInterval = null;
         let barcodeLocation = null;
+        let stream = null;
+
+        // Debug logging
+        function debugLog(message) {
+            debugInfo.innerHTML += `${new Date().toLocaleTimeString()}: ${message}<br>`;
+            debugInfo.scrollTop = debugInfo.scrollHeight;
+        }
 
         // Start camera
         startButton.addEventListener('click', async () => {
             try {
                 statusText.textContent = "Starting camera...";
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment' } 
+                debugLog("Attempting to access camera");
+                
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
                 });
                 
                 video.srcObject = stream;
-                await video.play();
+                video.classList.add('scanning');
+                
+                await new Promise((resolve) => {
+                    video.onplaying = resolve;
+                });
                 
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
@@ -64,30 +87,40 @@
                 startButton.disabled = true;
                 captureButton.disabled = false;
                 statusText.textContent = "Scanning... Point at a barcode";
+                debugLog(`Camera started at ${canvas.width}x${canvas.height} resolution`);
                 
                 // Start scanning for barcodes
-                scanningInterval = setInterval(scanForBarcode, 500);
+                scanningInterval = setInterval(scanForBarcode, 300);
                 
             } catch (error) {
                 statusText.textContent = "Error: " + error.message;
+                debugLog(`Camera error: ${error.message}`);
                 console.error(error);
             }
         });
 
         // Scan for barcodes
         function scanForBarcode() {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            
-            // Detect barcode
-            const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                inversionAttempts: "dontInvert",
-            });
-            
-            if (code) {
-                barcodeLocation = code.location;
-                drawBarcodeBox(code.location); // Visual feedback
-                statusText.textContent = "Barcode detected!";
+            try {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                
+                // Detect barcode with enhanced options
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "attemptBoth",
+                    canOverwriteImage: false
+                });
+                
+                if (code) {
+                    barcodeLocation = code.location;
+                    drawBarcodeBox(code.location);
+                    statusText.textContent = "Barcode detected!";
+                    debugLog(`Found ${code.format || 'barcode'} at ${JSON.stringify(code.location)}`);
+                } else {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+            } catch (error) {
+                debugLog(`Scan error: ${error.message}`);
             }
         }
 
@@ -108,13 +141,15 @@
         captureButton.addEventListener('click', () => {
             if (!barcodeLocation) {
                 statusText.textContent = "No barcode detected!";
+                debugLog("Capture attempted but no barcode found");
                 return;
             }
             
             clearInterval(scanningInterval);
+            video.classList.remove('scanning');
             
-            // Calculate crop area (with 10% padding)
-            const padding = 0.1;
+            // Calculate crop area with padding
+            const padding = 0.2; // 20% padding
             const width = barcodeLocation.bottomRightCorner.x - barcodeLocation.topLeftCorner.x;
             const height = barcodeLocation.bottomRightCorner.y - barcodeLocation.topLeftCorner.y;
             
@@ -123,43 +158,35 @@
             const cropWidth = Math.min(canvas.width - cropX, width * (1 + 2*padding));
             const cropHeight = Math.min(canvas.height - cropY, height * (1 + 2*padding));
             
-            // Create new canvas for cropped image
+            // Create cropped image
             const croppedCanvas = document.createElement('canvas');
             croppedCanvas.width = cropWidth;
             croppedCanvas.height = cropHeight;
             const croppedCtx = croppedCanvas.getContext('2d');
             
-            // Perform the crop
             croppedCtx.drawImage(
                 canvas, 
-                cropX, cropY, cropWidth, cropHeight, // Source rect
-                0, 0, cropWidth, cropHeight         // Destination rect
+                cropX, cropY, cropWidth, cropHeight,
+                0, 0, cropWidth, cropHeight
             );
             
-            // Display cropped barcode
+            // Display results
             croppedBarcode.src = croppedCanvas.toDataURL('image/jpeg');
             croppedBarcode.style.display = 'block';
             statusText.textContent = "Barcode captured!";
+            debugLog(`Captured barcode at ${cropWidth}x${cropHeight} resolution`);
             
-            // Here you would typically send to your backend:
+            // Here you would send to backend:
             // sendToBackend(croppedCanvas);
         });
 
-        // Example function to send to backend
-        function sendToBackend(canvas) {
-            canvas.toBlob((blob) => {
-                const formData = new FormData();
-                formData.append('barcode', blob, 'barcode.jpg');
-                
-                fetch('/api/upload-barcode', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => console.log("Backend response:", data))
-                .catch(error => console.error("Error:", error));
-            }, 'image/jpeg', 0.9);
-        }
+        // Clean up when leaving
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                debugLog("Camera stream stopped");
+            }
+        });
     </script>
 </body>
 </html>
