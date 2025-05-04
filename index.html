@@ -1,108 +1,97 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Detect and Crop Barcode Rectangle</title>
+  <meta charset="UTF-8">
+  <title>Detect and Crop Rectangle</title>
   <style>
-    body { font-family: sans-serif; text-align: center; margin: 20px; }
-    #video { width: 100%; max-width: 480px; }
-    #overlay {
-      position: absolute;
-      border: 2px solid red;
-      pointer-events: none;
+    body { font-family: sans-serif; text-align: center; }
+    #video, #canvas, #croppedCanvas {
+      max-width: 90vw;
+      margin-top: 10px;
+      border: 2px solid #000;
     }
-    #wrapper {
-      position: relative;
-      display: inline-block;
-    }
-    canvas { margin-top: 10px; border: 2px solid #333; }
   </style>
 </head>
 <body>
-  <h2>Tap to Crop and Show Barcode Area</h2>
-  <div id="wrapper">
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas" hidden></canvas>
-    <div id="overlay"></div>
-  </div>
+  <h2>Tap to Detect & Crop Rectangle</h2>
+  <video id="video" autoplay playsinline></video>
+  <br>
+  <canvas id="canvas" hidden></canvas>
   <canvas id="croppedCanvas"></canvas>
 
-  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.9/dist/quagga.min.js"></script>
+  <!-- Load OpenCV locally -->
+  <script src="opencv.js"></script> <!-- Must be placed alongside index.html -->
   <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const croppedCanvas = document.getElementById('croppedCanvas');
-    const overlay = document.getElementById('overlay');
 
-    async function initCamera() {
+    async function startCamera() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       video.srcObject = stream;
     }
 
-    function drawCropBox(box) {
-      const scaleX = video.offsetWidth / video.videoWidth;
-      const scaleY = video.offsetHeight / video.videoHeight;
-      overlay.style.left = `${box.x * scaleX}px`;
-      overlay.style.top = `${box.y * scaleY}px`;
-      overlay.style.width = `${box.width * scaleX}px`;
-      overlay.style.height = `${box.height * scaleY}px`;
-    }
+    function detectLargestRect(srcMat) {
+      let gray = new cv.Mat();
+      let blurred = new cv.Mat();
+      let edged = new cv.Mat();
+      let contours = new cv.MatVector();
+      let hierarchy = new cv.Mat();
 
-    function cropImage(box) {
-      const ctx = canvas.getContext('2d');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY);
+      cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+      cv.Canny(blurred, edged, 75, 200);
 
-      const croppedCtx = croppedCanvas.getContext('2d');
-      croppedCanvas.width = box.width;
-      croppedCanvas.height = box.height;
-      croppedCtx.drawImage(canvas, box.x, box.y, box.width, box.height, 0, 0, box.width, box.height);
-    }
+      cv.findContours(edged, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-    document.getElementById('wrapper').addEventListener('click', () => {
-      const canvasCtx = canvas.getContext('2d');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvasCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = canvasCtx.getImageData(0, 0, canvas.width, canvas.height);
+      let maxArea = 0;
+      let bestRect = null;
 
-      Quagga.decodeSingle({
-        src: imageData,
-        inputStream: {
-          size: 800,
-        },
-        locator: {
-          patchSize: "medium",
-          halfSample: true
-        },
-        numOfWorkers: 0,
-        locate: true,
-        decoder: {
-          readers: ["code_128_reader"] // any reader, we're ignoring result
-        },
-      }, function (result) {
-        if (result && result.box) {
-          const points = result.box;
-          const xs = points.map(p => p[0]);
-          const ys = points.map(p => p[1]);
-          const x = Math.min(...xs);
-          const y = Math.min(...ys);
-          const width = Math.max(...xs) - x;
-          const height = Math.max(...ys) - y;
-
-          const box = { x, y, width, height };
-          drawCropBox(box);
-          cropImage(box);
-        } else {
-          overlay.style.width = '0px';
-          overlay.style.height = '0px';
-          alert('No rectangle detected.');
+      for (let i = 0; i < contours.size(); i++) {
+        const contour = contours.get(i);
+        const approx = new cv.Mat();
+        cv.approxPolyDP(contour, approx, 0.02 * cv.arcLength(contour, true), true);
+        if (approx.rows === 4) {
+          const rect = cv.boundingRect(approx);
+          const area = rect.width * rect.height;
+          if (area > maxArea) {
+            maxArea = area;
+            bestRect = rect;
+          }
         }
-      });
-    });
+        approx.delete();
+      }
 
-    initCamera();
+      gray.delete(); blurred.delete(); edged.delete(); contours.delete(); hierarchy.delete();
+      return bestRect;
+    }
+
+    function cropFromVideo() {
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, width, height);
+
+      let src = cv.imread(canvas);
+      const rect = detectLargestRect(src);
+
+      if (rect) {
+        const cropped = src.roi(rect);
+        cv.imshow(croppedCanvas, cropped);
+        cropped.delete();
+      } else {
+        alert('No rectangle found');
+      }
+      src.delete();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      startCamera();
+      video.addEventListener('click', cropFromVideo);
+    });
   </script>
 </body>
 </html>
