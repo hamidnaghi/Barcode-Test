@@ -1,332 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>1D Barcode Frame Detector</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 10px;
-            touch-action: manipulation;
-        }
-        #scanner-container {
-            position: relative;
-            width: 100%;
-            max-width: 500px;
-            margin: 0 auto;
-        }
-        #video {
-            width: 100%;
-            display: block;
-            background: #000;
-        }
-        #canvas {
-            display: none;
-        }
-        #target-box {
-            position: absolute;
-            border: 3px solid #00FF00;
-            background: rgba(0, 255, 0, 0.2);
-            display: none;
-            pointer-events: none;
-        }
-        .button-container {
-            text-align: center;
-            margin: 15px 0;
-        }
-        button {
-            padding: 12px 20px;
-            margin: 0 5px;
-            background: #4285f4;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-        }
-        #results {
-            text-align: center;
-            margin-top: 15px;
-        }
-        #croppedResult {
-            max-width: 100%;
-            border: 2px solid #4CAF50;
-        }
-        #status {
-            margin: 10px 0;
-            color: #666;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Barcode Detector</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+      background-color: #000;
+    }
+    #video {
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+    #target-box {
+      position: absolute;
+      border: 3px solid red;
+      border-radius: 8px;
+      display: none;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.8);
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 16px;
+      z-index: 20;
+    }
+  </style>
 </head>
 <body>
-    <h2 style="text-align:center;">1D Barcode Scanner</h2>
-    <p id="status">Tap on the barcode to detect</p>
-    
-    <div id="scanner-container">
-        <video id="video" playsinline autoplay></video>
-        <canvas id="canvas"></canvas>
-        <div id="target-box"></div>
-    </div>
-    
-    <div class="button-container">
-        <button id="startButton">Start Camera</button>
-        <button id="captureButton" disabled>Capture</button>
-    </div>
-    
-    <div id="results">
-        <img id="croppedResult" style="display:none;">
-    </div>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <div id="target-box"></div>
+  <div id="status">Tap on barcode area</div>
 
-    <script>
-        // Elements
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const targetBox = document.getElementById('target-box');
-        const startButton = document.getElementById('startButton');
-        const captureButton = document.getElementById('captureButton');
-        const croppedResult = document.getElementById('croppedResult');
-        const statusText = document.getElementById('status');
-        
-        // Variables
-        let stream = null;
-        let detectionBox = null;
-        let lastTapTime = 0;
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const targetBox = document.getElementById('target-box');
+    const statusText = document.getElementById('status');
 
-        // Start camera
-        startButton.addEventListener('click', async () => {
-            try {
-                statusText.textContent = "Starting camera...";
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    } 
-                });
-                video.srcObject = stream;
-                video.onplaying = () => {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    startButton.disabled = true;
-                    captureButton.disabled = false;
-                    statusText.textContent = "Tap on the barcode to detect";
-                };
-            } catch (err) {
-                statusText.textContent = "Camera error: " + err.message;
-            }
-        });
+    let stream = null;
+    let lastTapTime = 0;
 
-        // Handle screen touches/clicks
-        video.addEventListener('click', handleTap);
-        video.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            handleTap(e.touches[0]);
-        });
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        video.srcObject = stream;
+      } catch (err) {
+        alert("Camera access denied or unavailable.");
+        console.error(err);
+      }
+    }
 
-        function handleTap(event) {
-            if (!stream) return;
-            
-            // Prevent double-taps
-            const now = Date.now();
-            if (now - lastTapTime < 300) return;
-            lastTapTime = now;
-            
-            const rect = video.getBoundingClientRect();
-            const x = ((event.clientX || event.pageX) - rect.left) / rect.width * video.videoWidth;
-            const y = ((event.clientY || event.pageY) - rect.top) / rect.height * video.videoHeight;
-            
-            statusText.textContent = "Detecting barcode...";
-            setTimeout(() => detectBarcodeAtPoint(x, y), 100);
+    function handleTap(event) {
+      if (!stream) return;
+
+      const now = Date.now();
+      if (now - lastTapTime < 300) return;
+      lastTapTime = now;
+
+      const rect = video.getBoundingClientRect();
+      const x = ((event.clientX || event.pageX) - rect.left) / rect.width * video.videoWidth;
+      const y = ((event.clientY || event.pageY) - rect.top) / rect.height * video.videoHeight;
+
+      statusText.textContent = "Detecting barcode...";
+      setTimeout(() => detectBarcodeAtPoint(x, y), 100);
+    }
+
+    function detectBarcodeAtPoint(x, y) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const { data, width, height } = imageData;
+
+      const toGray = (i) => 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+      const gray = new Uint8ClampedArray(width * height);
+      for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+        gray[j] = toGray(i);
+      }
+
+      const g = (x, y) => gray[Math.floor(y) * width + Math.floor(x)];
+
+      const scanLineEdges = (cx, cy, axis, maxDist = 50) => {
+        let start = axis === 'x' ? cx : cy;
+        let min = start;
+        let max = start;
+        const threshold = 40;
+        for (let d = 1; d < maxDist; d++) {
+          const pos1 = axis === 'x' ? [cx - d, cy] : [cx, cy - d];
+          const pos2 = axis === 'x' ? [cx + d, cy] : [cx, cy + d];
+          const i1 = g(...pos1);
+          const i2 = g(...pos2);
+          if (Math.abs(g(cx, cy) - i1) > threshold) min = axis === 'x' ? pos1[0] : pos1[1];
+          if (Math.abs(g(cx, cy) - i2) > threshold) max = axis === 'x' ? pos2[0] : pos2[1];
         }
+        return [min, max];
+      };
 
-        // Enhanced 1D barcode detection
-        function detectBarcodeAtPoint(x, y) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            
-            // Convert to grayscale
-            const grayData = new Uint8Array(imageData.width * imageData.height);
-            for (let i = 0, j = 0; i < imageData.data.length; i += 4, j++) {
-                grayData[j] = Math.round(0.299 * imageData.data[i] + 
-                                        0.587 * imageData.data[i+1] + 
-                                        0.114 * imageData.data[i+2]);
-            }
-            
-            // Strategy 1: Horizontal edge detection (for barcode lines)
-            let leftEdge = x;
-            let rightEdge = x;
-            let topEdge = y;
-            let bottomEdge = y;
-            
-            // Find left edge (scan left until we find consistent edges)
-            let edgeCount = 0;
-            for (let scanX = x; scanX > 10; scanX--) {
-                const i = Math.floor(y) * imageData.width + Math.floor(scanX);
-                const diff = Math.abs(grayData[i] - grayData[i-1]);
-                
-                if (diff > 40) { // Strong edge
-                    edgeCount++;
-                    if (edgeCount > 3) {
-                        leftEdge = scanX;
-                        break;
-                    }
-                } else if (edgeCount > 0) {
-                    edgeCount--;
-                }
-            }
-            
-            // Find right edge (scan right for edges)
-            edgeCount = 0;
-            for (let scanX = x; scanX < imageData.width - 10; scanX++) {
-                const i = Math.floor(y) * imageData.width + Math.floor(scanX);
-                const diff = Math.abs(grayData[i] - grayData[i+1]);
-                
-                if (diff > 40) { // Strong edge
-                    edgeCount++;
-                    if (edgeCount > 3) {
-                        rightEdge = scanX;
-                        break;
-                    }
-                } else if (edgeCount > 0) {
-                    edgeCount--;
-                }
-            }
-            
-            // Strategy 2: Vertical consistency check
-            const barcodeWidth = rightEdge - leftEdge;
-            let consistentTop = y;
-            let consistentBottom = y;
-            
-            // Scan upward
-            for (let scanY = y; scanY > 10; scanY--) {
-                let currentLeft = leftEdge;
-                let currentRight = rightEdge;
-                
-                // Quick edge adjustment for this row
-                for (let scanX = currentLeft; scanX > currentLeft - 20; scanX--) {
-                    const i = Math.floor(scanY) * imageData.width + Math.floor(scanX);
-                    const diff = Math.abs(grayData[i] - grayData[i-1]);
-                    if (diff > 40) {
-                        currentLeft = scanX;
-                        break;
-                    }
-                }
-                
-                for (let scanX = currentRight; scanX < currentRight + 20; scanX++) {
-                    const i = Math.floor(scanY) * imageData.width + Math.floor(scanX);
-                    const diff = Math.abs(grayData[i] - grayData[i+1]);
-                    if (diff > 40) {
-                        currentRight = scanX;
-                        break;
-                    }
-                }
-                
-                // Check if width is similar
-                if (Math.abs((currentRight - currentLeft) - barcodeWidth) < 30) {
-                    consistentTop = scanY;
-                    leftEdge = currentLeft;
-                    rightEdge = currentRight;
-                } else {
-                    break;
-                }
-            }
-            
-            // Scan downward
-            for (let scanY = y; scanY < imageData.height - 10; scanY++) {
-                let currentLeft = leftEdge;
-                let currentRight = rightEdge;
-                
-                // Quick edge adjustment for this row
-                for (let scanX = currentLeft; scanX > currentLeft - 20; scanX--) {
-                    const i = Math.floor(scanY) * imageData.width + Math.floor(scanX);
-                    const diff = Math.abs(grayData[i] - grayData[i-1]);
-                    if (diff > 40) {
-                        currentLeft = scanX;
-                        break;
-                    }
-                }
-                
-                for (let scanX = currentRight; scanX < currentRight + 20; scanX++) {
-                    const i = Math.floor(scanY) * imageData.width + Math.floor(scanX);
-                    const diff = Math.abs(grayData[i] - grayData[i+1]);
-                    if (diff > 40) {
-                        currentRight = scanX;
-                        break;
-                    }
-                }
-                
-                // Check if width is similar
-                if (Math.abs((currentRight - currentLeft) - barcodeWidth) < 30) {
-                    consistentBottom = scanY;
-                    leftEdge = currentLeft;
-                    rightEdge = currentRight;
-                } else {
-                    break;
-                }
-            }
-            
-            // Final validation
-            const finalWidth = rightEdge - leftEdge;
-            const finalHeight = consistentBottom - consistentTop;
-            
-            if (finalWidth > 50 && finalHeight > 20 && finalWidth < canvas.width * 0.8) {
-                detectionBox = {
-                    x: leftEdge,
-                    y: consistentTop,
-                    width: finalWidth,
-                    height: finalHeight
-                };
-                
-                // Show detection box
-                updateTargetBox();
-                statusText.textContent = "Barcode detected! Tap again to adjust or click Capture";
-            } else {
-                statusText.textContent = "Couldn't detect barcode. Try tapping closer to center";
-                targetBox.style.display = 'none';
-            }
-        }
+      const sampleYs = [-10, 0, 10];
+      let minX = x, maxX = x;
+      for (const offset of sampleYs) {
+        const [l, r] = scanLineEdges(x, y + offset, 'x');
+        minX = Math.min(minX, l);
+        maxX = Math.max(maxX, r);
+      }
 
-        function updateTargetBox() {
-            const rect = video.getBoundingClientRect();
-            targetBox.style.left = (detectionBox.x / canvas.width * rect.width) + 'px';
-            targetBox.style.top = (detectionBox.y / canvas.height * rect.height) + 'px';
-            targetBox.style.width = (detectionBox.width / canvas.width * rect.width) + 'px';
-            targetBox.style.height = (detectionBox.height / canvas.height * rect.height) + 'px';
-            targetBox.style.display = 'block';
-        }
+      const sampleXs = [-10, 0, 10];
+      let minY = y, maxY = y;
+      for (const offset of sampleXs) {
+        const [t, b] = scanLineEdges(x + offset, y, 'y');
+        minY = Math.min(minY, t);
+        maxY = Math.max(maxY, b);
+      }
 
-        // Capture the selected area
-        captureButton.addEventListener('click', () => {
-            if (!detectionBox) return;
-            
-            // Crop with 20% padding (more padding for 1D barcodes)
-            const padding = 0.2;
-            const padX = detectionBox.width * padding;
-            const padY = detectionBox.height * padding;
-            
-            const cropX = Math.max(0, detectionBox.x - padX);
-            const cropY = Math.max(0, detectionBox.y - padY);
-            const cropWidth = Math.min(canvas.width - cropX, detectionBox.width + 2*padX);
-            const cropHeight = Math.min(canvas.height - cropY, detectionBox.height + 2*padY);
-            
-            // Create cropped image
-            const croppedCanvas = document.createElement('canvas');
-            croppedCanvas.width = cropWidth;
-            croppedCanvas.height = cropHeight;
-            const croppedCtx = croppedCanvas.getContext('2d');
-            croppedCtx.drawImage(
-                canvas, 
-                cropX, cropY, cropWidth, cropHeight, 
-                0, 0, cropWidth, cropHeight
-            );
-            
-            // Display result
-            croppedResult.src = croppedCanvas.toDataURL('image/jpeg');
-            croppedResult.style.display = 'block';
-            statusText.textContent = "Barcode captured!";
-        });
-    </script>
+      minX = Math.max(0, minX); maxX = Math.min(width, maxX);
+      minY = Math.max(0, minY); maxY = Math.min(height, maxY);
+
+      const scaleX = video.offsetWidth / video.videoWidth;
+      const scaleY = video.offsetHeight / video.videoHeight;
+
+      targetBox.style.display = 'block';
+      targetBox.style.left = `${minX * scaleX + video.offsetLeft}px`;
+      targetBox.style.top = `${minY * scaleY + video.offsetTop}px`;
+      targetBox.style.width = `${(maxX - minX) * scaleX}px`;
+      targetBox.style.height = `${(maxY - minY) * scaleY}px`;
+
+      statusText.textContent = `Detected area: ${Math.round(minX)},${Math.round(minY)} to ${Math.round(maxX)},${Math.round(maxY)}`;
+    }
+
+    video.addEventListener('click', handleTap);
+    video.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        handleTap(e.touches[0]);
+      }
+    });
+
+    startCamera();
+  </script>
 </body>
 </html>
