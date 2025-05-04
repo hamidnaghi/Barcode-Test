@@ -16,11 +16,11 @@
   <h2>Tap to Detect & Crop Rectangle</h2>
   <video id="video" autoplay playsinline></video>
   <br>
-  <canvas id="canvas" hidden></canvas>
+  <canvas id="canvas"></canvas>
   <canvas id="croppedCanvas"></canvas>
 
   <!-- Load OpenCV locally -->
-  <script src="opencv.js"></script> <!-- Must be placed alongside index.html -->
+  <script src="opencv.js"></script> <!-- Make sure this is downloaded and in the same folder -->
   <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
@@ -31,7 +31,7 @@
       video.srcObject = stream;
     }
 
-    function detectLargestRect(srcMat) {
+    function detectAndDrawRectangle(srcMat) {
       let gray = new cv.Mat();
       let blurred = new cv.Mat();
       let edged = new cv.Mat();
@@ -41,7 +41,6 @@
       cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY);
       cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
       cv.Canny(blurred, edged, 75, 200);
-
       cv.findContours(edged, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
       let maxArea = 0;
@@ -62,21 +61,31 @@
         approx.delete();
       }
 
+      if (bestRect) {
+        const point1 = new cv.Point(bestRect.x, bestRect.y);
+        const point2 = new cv.Point(bestRect.x + bestRect.width, bestRect.y + bestRect.height);
+        const color = new cv.Scalar(255, 0, 0, 255); // Red box
+        const thickness = 3;
+        cv.rectangle(srcMat, point1, point2, color, thickness);
+      }
+
       gray.delete(); blurred.delete(); edged.delete(); contours.delete(); hierarchy.delete();
+
       return bestRect;
     }
 
-    function cropFromVideo() {
+    function processFrame() {
       const width = video.videoWidth;
       const height = video.videoHeight;
-
       canvas.width = width;
       canvas.height = height;
+
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, width, height);
 
       let src = cv.imread(canvas);
-      const rect = detectLargestRect(src);
+      const rect = detectAndDrawRectangle(src);
+      cv.imshow(canvas, src);
 
       if (rect) {
         const cropped = src.roi(rect);
@@ -85,12 +94,13 @@
       } else {
         alert('No rectangle found');
       }
+
       src.delete();
     }
 
     document.addEventListener('DOMContentLoaded', () => {
       startCamera();
-      video.addEventListener('click', cropFromVideo);
+      video.addEventListener('click', processFrame);
     });
   </script>
 </body>
