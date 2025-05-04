@@ -2,111 +2,89 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Barcode Auto Detect & Crop</title>
+  <title>Detect and Crop Barcode Rectangle</title>
   <style>
-    body { font-family: sans-serif; text-align: center; }
-    video, canvas { max-width: 100%; height: auto; border: 1px solid #ccc; }
-    #cropCanvas { border: 2px solid red; margin-top: 10px; }
-    #result { margin-top: 10px; font-weight: bold; }
-    #wrapper { position: relative; display: inline-block; }
+    body { font-family: sans-serif; text-align: center; margin: 20px; }
+    #video { width: 100%; max-width: 480px; }
     #overlay {
       position: absolute;
       border: 2px solid red;
       pointer-events: none;
     }
+    #wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    canvas { margin-top: 10px; border: 2px solid #333; }
   </style>
 </head>
 <body>
-  <h2>Auto Detect and Crop Barcode</h2>
+  <h2>Tap to Crop and Show Barcode Area</h2>
   <div id="wrapper">
     <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" hidden></canvas>
     <div id="overlay"></div>
   </div>
-  <canvas id="cropCanvas" width="200" height="100"></canvas>
-  <div id="result">Result: <span id="barcodeResult">Waiting...</span></div>
+  <canvas id="croppedCanvas"></canvas>
 
-  <!-- ZXing-js Browser Library (minified and offline-capable) -->
-  <script type="module">
-    import { BrowserMultiFormatReader } from "https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm";
-
-    const codeReader = new BrowserMultiFormatReader();
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.9/dist/quagga.min.js"></script>
+  <script>
     const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const croppedCanvas = document.getElementById('croppedCanvas');
     const overlay = document.getElementById('overlay');
-    const cropCanvas = document.getElementById('cropCanvas');
-    const cropCtx = cropCanvas.getContext('2d');
-    const barcodeResult = document.getElementById('barcodeResult');
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-      .then(stream => {
-        video.srcObject = stream;
-        video.addEventListener('loadedmetadata', () => {
-          detectLoop();
-        });
-      });
-
-    async function detectLoop() {
-      const offCanvas = document.createElement('canvas');
-      const ctx = offCanvas.getContext('2d');
-
-      const width = video.videoWidth;
-      const height = video.videoHeight;
-      offCanvas.width = width;
-      offCanvas.height = height;
-
-      ctx.drawImage(video, 0, 0, width, height);
-      try {
-        const result = await codeReader.decodeFromImageElement(offCanvas);
-        if (result) {
-          const points = result.resultPoints;
-          if (points.length >= 2) {
-            const x1 = points[0].x;
-            const y1 = points[0].y;
-            const x2 = points[1].x;
-            const y2 = points[1].y;
-            const minX = Math.min(x1, x2);
-            const minY = Math.min(y1, y2);
-            const maxX = Math.max(x1, x2);
-            const maxY = Math.max(y1, y2);
-            const padding = 20;
-
-            const sx = Math.max(0, minX - padding);
-            const sy = Math.max(0, minY - padding);
-            const sw = Math.min(width - sx, maxX - minX + 2 * padding);
-            const sh = Math.min(height - sy, maxY - minY + 2 * padding);
-
-            // Draw overlay rectangle
-            overlay.style.left = `${sx * video.offsetWidth / width}px`;
-            overlay.style.top = `${sy * video.offsetHeight / height}px`;
-            overlay.style.width = `${sw * video.offsetWidth / width}px`;
-            overlay.style.height = `${sh * video.offsetHeight / height}px`;
-
-            // Crop and show
-            cropCanvas.width = sw;
-            cropCanvas.height = sh;
-            cropCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-
-            // Decode again from cropped
-            const cropDataUrl = cropCanvas.toDataURL();
-            const img = new Image();
-            img.onload = async () => {
-              try {
-                const finalResult = await codeReader.decodeFromImage(img);
-                barcodeResult.textContent = finalResult.text;
-              } catch {
-                barcodeResult.textContent = "Barcode not detected in crop.";
-              }
-            };
-            img.src = cropDataUrl;
-          }
-        }
-      } catch {
-        overlay.style.width = '0px';
-        overlay.style.height = '0px';
-        barcodeResult.textContent = "No barcode detected.";
-      }
-
-      requestAnimationFrame(detectLoop);
+    async function initCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = stream;
     }
-  </script>
-</body>
-</html>
+
+    function drawCropBox(box) {
+      const scaleX = video.offsetWidth / video.videoWidth;
+      const scaleY = video.offsetHeight / video.videoHeight;
+      overlay.style.left = `${box.x * scaleX}px`;
+      overlay.style.top = `${box.y * scaleY}px`;
+      overlay.style.width = `${box.width * scaleX}px`;
+      overlay.style.height = `${box.height * scaleY}px`;
+    }
+
+    function cropImage(box) {
+      const ctx = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const croppedCtx = croppedCanvas.getContext('2d');
+      croppedCanvas.width = box.width;
+      croppedCanvas.height = box.height;
+      croppedCtx.drawImage(canvas, box.x, box.y, box.width, box.height, 0, 0, box.width, box.height);
+    }
+
+    document.getElementById('wrapper').addEventListener('click', () => {
+      const canvasCtx = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvasCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = canvasCtx.getImageData(0, 0, canvas.width, canvas.height);
+
+      Quagga.decodeSingle({
+        src: imageData,
+        inputStream: {
+          size: 800,
+        },
+        locator: {
+          patchSize: "medium",
+          halfSample: true
+        },
+        numOfWorkers: 0,
+        locate: true,
+        decoder: {
+          readers: ["code_128_reader"] // any reader, we're ignoring result
+        },
+      }, function (result) {
+        if (result && result.box) {
+          const points = result.box;
+          const xs = points.map(p => p[0]);
+          const ys = points.map(p => p[1]);
+          const x = Math.min(...xs);
+          const y =
