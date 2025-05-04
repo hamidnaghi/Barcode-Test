@@ -1,80 +1,211 @@
-function scanForBarcode() {
-    try {
-        // 1. Capture frame
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // 2. Pre-process image for better detection
-        const grayData = convertToGrayscale(imageData.data);
-        const thresholdData = applyThreshold(grayData, 120);
-        
-        // 3. Try multiple detection methods
-        let code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "attemptBoth",
-            canOverwriteImage: false
-        });
-        
-        // 4. If no QR found, try looking for linear barcodes
-        if (!code) {
-            code = findLinearBarcode(thresholdData, imageData.width, imageData.height);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Frame Cropper</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 100%;
+            padding: 20px;
+            margin: 0 auto;
         }
-        
-        if (code) {
-            barcodeLocation = code.location;
-            drawBarcodeBox(code.location);
-            statusText.textContent = `Found: ${code.format || 'Barcode'}`;
-            debugLog(`Detected ${code.format || 'barcode'} at ${JSON.stringify(code.location)}`);
-            return true;
+        #scanner-container {
+            position: relative;
+            width: 100%;
+            margin: 0 auto;
+            max-width: 500px;
         }
-        
-        return false;
-        
-    } catch (error) {
-        debugLog(`Scan error: ${error.message}`);
-        return false;
-    }
-}
-
-// Helper functions
-function convertToGrayscale(imageData) {
-    const grayData = new Uint8ClampedArray(imageData.length/4);
-    for (let i = 0, j = 0; i < imageData.length; i += 4, j++) {
-        grayData[j] = Math.round(0.299 * imageData[i] + 0.587 * imageData[i+1] + 0.114 * imageData[i+2]);
-    }
-    return grayData;
-}
-
-function applyThreshold(imageData, threshold) {
-    const thresholdData = new Uint8ClampedArray(imageData.length);
-    for (let i = 0; i < imageData.length; i++) {
-        thresholdData[i] = imageData[i] > threshold ? 255 : 0;
-    }
-    return thresholdData;
-}
-
-function findLinearBarcode(imageData, width, height) {
-    // Simple vertical edge detection for demonstration
-    // In production, use a library like ZXing for proper 1D barcode detection
-    const edges = [];
-    const threshold = 50;
+        #video {
+            width: 100%;
+            background: #000;
+            border: 2px solid #333;
+        }
+        #canvas {
+            display: none;
+        }
+        button {
+            padding: 12px 20px;
+            margin: 10px 5px;
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #results {
+            margin-top: 20px;
+            text-align: center;
+        }
+        #croppedResult {
+            max-width: 100%;
+            border: 2px solid #4CAF50;
+            margin-top: 15px;
+        }
+        #status {
+            margin: 10px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">Barcode Frame Cropper</h1>
     
-    for (let y = 0; y < height; y++) {
-        for (let x = 1; x < width; x++) {
-            const diff = Math.abs(imageData[y*width + x] - imageData[y*width + x-1]);
-            if (diff > threshold) edges.push({x, y});
-        }
-    }
+    <div id="scanner-container">
+        <video id="video" playsinline autoplay></video>
+        <canvas id="canvas"></canvas>
+    </div>
     
-    if (edges.length > width * 0.3) { // If many edges found
-        return {
-            format: "LINEAR",
-            location: {
-                topLeftCorner: { x: 0, y: 0 },
-                topRightCorner: { x: width, y: 0 },
-                bottomRightCorner: { x: width, y: height },
-                bottomLeftCorner: { x: 0, y: height }
+    <div style="text-align: center;">
+        <button id="startButton">Start Camera</button>
+        <button id="captureButton" disabled>Capture Barcode Area</button>
+    </div>
+    
+    <div id="results">
+        <div id="status">Status: Ready</div>
+        <img id="croppedResult" style="display: none;">
+    </div>
+
+    <script>
+        // DOM elements
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const captureButton = document.getElementById('captureButton');
+        const croppedResult = document.getElementById('croppedResult');
+        const statusText = document.getElementById('status');
+        
+        // Variables
+        let stream = null;
+
+        // Start camera
+        startButton.addEventListener('click', async () => {
+            try {
+                statusText.textContent = "Starting camera...";
+                
+                // Stop any existing stream
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                
+                // Get camera access
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                
+                video.srcObject = stream;
+                
+                // Wait for video to be ready
+                await new Promise((resolve) => {
+                    video.onplaying = resolve;
+                });
+                
+                // Set canvas dimensions
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                startButton.disabled = true;
+                captureButton.disabled = false;
+                statusText.textContent = "Ready - Point camera at barcode";
+                
+            } catch (error) {
+                statusText.textContent = "Error: " + error.message;
+                console.error("Camera error:", error);
             }
-        };
-    }
-    return null;
-}
+        });
+
+        // Detect barcode frame (simplified approach)
+        function detectBarcodeFrame(imageData) {
+            const threshold = 50; // Adjust for lighting (30-80)
+            const minEdgePixels = 100; // Minimum dark pixels to consider
+            
+            let minX = canvas.width, minY = canvas.height;
+            let maxX = 0, maxY = 0;
+            let edgeCount = 0;
+            
+            // Simple edge detection (look for dark areas)
+            for (let y = 0; y < imageData.height; y++) {
+                for (let x = 0; x < imageData.width; x++) {
+                    const i = (y * imageData.width + x) * 4;
+                    const brightness = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
+                    
+                    if (brightness < threshold) {
+                        edgeCount++;
+                        if (x < minX) minX = x;
+                        if (y < minY) minY = y;
+                        if (x > maxX) maxX = x;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            }
+            
+            // Only return if we found a significant dark area
+            if (edgeCount > minEdgePixels && (maxX - minX) > 50 && (maxY - minY) > 10) {
+                return {
+                    x: minX,
+                    y: minY,
+                    width: maxX - minX,
+                    height: maxY - minY
+                };
+            }
+            return null;
+        }
+
+        // Capture and crop barcode area
+        captureButton.addEventListener('click', () => {
+            // Draw current frame to canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            // Detect barcode frame
+            const barcodeFrame = detectBarcodeFrame(imageData);
+            
+            if (barcodeFrame) {
+                // Add 10% padding around detected area
+                const padding = 0.1;
+                const padX = barcodeFrame.width * padding;
+                const padY = barcodeFrame.height * padding;
+                
+                const cropX = Math.max(0, barcodeFrame.x - padX);
+                const cropY = Math.max(0, barcodeFrame.y - padY);
+                const cropWidth = Math.min(canvas.width - cropX, barcodeFrame.width + 2 * padX);
+                const cropHeight = Math.min(canvas.height - cropY, barcodeFrame.height + 2 * padY);
+                
+                // Create and draw cropped image
+                const croppedCanvas = document.createElement('canvas');
+                croppedCanvas.width = cropWidth;
+                croppedCanvas.height = cropHeight;
+                const croppedCtx = croppedCanvas.getContext('2d');
+                
+                croppedCtx.drawImage(
+                    canvas, 
+                    cropX, cropY, cropWidth, cropHeight,
+                    0, 0, cropWidth, cropHeight
+                );
+                
+                // Display result
+                croppedResult.src = croppedCanvas.toDataURL('image/jpeg');
+                croppedResult.style.display = 'block';
+                statusText.textContent = `Cropped barcode area: ${cropWidth}x${cropHeight}px`;
+                
+            } else {
+                statusText.textContent = "No barcode frame detected! Try adjusting lighting.";
+            }
+        });
+
+        // Clean up when page closes
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        });
+    </script>
+</body>
+</html>
