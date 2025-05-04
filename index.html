@@ -1,151 +1,90 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Barcode Detector</title>
+  <title>Barcode Cropping</title>
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      font-family: sans-serif;
-      background-color: #000;
+    #cameraContainer {
+      position: relative;
+      display: inline-block;
     }
-    #video {
-      width: 100vw;
-      height: 100vh;
-      object-fit: cover;
+    #camera {
+      width: 100%;
+      max-width: 500px;
     }
-    #target-box {
+    #overlay {
       position: absolute;
-      border: 3px solid red;
-      border-radius: 8px;
-      display: none;
+      top: 0;
+      left: 0;
       pointer-events: none;
-      z-index: 10;
     }
-    #status {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background: rgba(255, 255, 255, 0.8);
-      padding: 5px 10px;
-      border-radius: 5px;
-      font-size: 16px;
-      z-index: 20;
+    #cropped {
+      margin-top: 10px;
+      border: 2px solid #ccc;
     }
   </style>
 </head>
 <body>
-  <video id="video" autoplay playsinline></video>
-  <canvas id="canvas" style="display:none;"></canvas>
-  <div id="target-box"></div>
-  <div id="status">Tap on barcode area</div>
+  <h1>Tap to crop area</h1>
+  <div id="cameraContainer">
+    <video id="camera" autoplay playsinline></video>
+    <canvas id="overlay"></canvas>
+  </div>
+  <canvas id="cropped" width="200" height="150"></canvas>
 
   <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const targetBox = document.getElementById('target-box');
-    const statusText = document.getElementById('status');
+    const video = document.getElementById('camera');
+    const overlay = document.getElementById('overlay');
+    const croppedCanvas = document.getElementById('cropped');
+    const croppedCtx = croppedCanvas.getContext('2d');
 
-    let stream = null;
-    let lastTapTime = 0;
+    const cropWidth = 200;
+    const cropHeight = 150;
 
-    async function startCamera() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    // Start the camera
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(stream => {
         video.srcObject = stream;
-      } catch (err) {
-        alert("Camera access denied or unavailable.");
-        console.error(err);
-      }
-    }
+        video.onloadedmetadata = () => {
+          video.play();
+          overlay.width = video.videoWidth;
+          overlay.height = video.videoHeight;
+        };
+      });
 
-    function handleTap(event) {
-      if (!stream) return;
-
-      const now = Date.now();
-      if (now - lastTapTime < 300) return;
-      lastTapTime = now;
-
+    // Draw crop box when user taps/clicks
+    video.addEventListener('click', function (e) {
       const rect = video.getBoundingClientRect();
-      const x = ((event.clientX || event.pageX) - rect.left) / rect.width * video.videoWidth;
-      const y = ((event.clientY || event.pageY) - rect.top) / rect.height * video.videoHeight;
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
 
-      statusText.textContent = "Detecting barcode...";
-      setTimeout(() => detectBarcodeAtPoint(x, y), 100);
-    }
+      const scaleX = video.videoWidth / rect.width;
+      const scaleY = video.videoHeight / rect.height;
 
-    function detectBarcodeAtPoint(x, y) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const { data, width, height } = imageData;
+      const cropX = x * scaleX - cropWidth / 2;
+      const cropY = y * scaleY - cropHeight / 2;
 
-      const toGray = (i) => 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-      const gray = new Uint8ClampedArray(width * height);
-      for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-        gray[j] = toGray(i);
-      }
+      drawOverlay(cropX, cropY);
 
-      const g = (x, y) => gray[Math.floor(y) * width + Math.floor(x)];
+      // Draw cropped area to a separate canvas
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = video.videoWidth;
+      tempCanvas.height = video.videoHeight;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
 
-      const scanLineEdges = (cx, cy, axis, maxDist = 50) => {
-        let start = axis === 'x' ? cx : cy;
-        let min = start;
-        let max = start;
-        const threshold = 40;
-        for (let d = 1; d < maxDist; d++) {
-          const pos1 = axis === 'x' ? [cx - d, cy] : [cx, cy - d];
-          const pos2 = axis === 'x' ? [cx + d, cy] : [cx, cy + d];
-          const i1 = g(...pos1);
-          const i2 = g(...pos2);
-          if (Math.abs(g(cx, cy) - i1) > threshold) min = axis === 'x' ? pos1[0] : pos1[1];
-          if (Math.abs(g(cx, cy) - i2) > threshold) max = axis === 'x' ? pos2[0] : pos2[1];
-        }
-        return [min, max];
-      };
+      croppedCtx.clearRect(0, 0, croppedCanvas.width, croppedCanvas.height);
+      croppedCtx.drawImage(tempCanvas, cropX, cropY, cropWidth, cropHeight, 0, 0, croppedCanvas.width, croppedCanvas.height);
 
-      const sampleYs = [-10, 0, 10];
-      let minX = x, maxX = x;
-      for (const offset of sampleYs) {
-        const [l, r] = scanLineEdges(x, y + offset, 'x');
-        minX = Math.min(minX, l);
-        maxX = Math.max(maxX, r);
-      }
-
-      const sampleXs = [-10, 0, 10];
-      let minY = y, maxY = y;
-      for (const offset of sampleXs) {
-        const [t, b] = scanLineEdges(x + offset, y, 'y');
-        minY = Math.min(minY, t);
-        maxY = Math.max(maxY, b);
-      }
-
-      minX = Math.max(0, minX); maxX = Math.min(width, maxX);
-      minY = Math.max(0, minY); maxY = Math.min(height, maxY);
-
-      const scaleX = video.offsetWidth / video.videoWidth;
-      const scaleY = video.offsetHeight / video.videoHeight;
-
-      targetBox.style.display = 'block';
-      targetBox.style.left = `${minX * scaleX + video.offsetLeft}px`;
-      targetBox.style.top = `${minY * scaleY + video.offsetTop}px`;
-      targetBox.style.width = `${(maxX - minX) * scaleX}px`;
-      targetBox.style.height = `${(maxY - minY) * scaleY}px`;
-
-      statusText.textContent = `Detected area: ${Math.round(minX)},${Math.round(minY)} to ${Math.round(maxX)},${Math.round(maxY)}`;
-    }
-
-    video.addEventListener('click', handleTap);
-    video.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 1) {
-        handleTap(e.touches[0]);
-      }
+      // Ready for barcode decoding (next step)
     });
 
-    startCamera();
+    function drawOverlay(x, y) {
+      const ctx = overlay.getContext('2d');
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, cropWidth, cropHeight);
+    }
   </script>
 </body>
 </html>
