@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Barcode Cropping</title>
+  <title>Barcode Cropping and Reading</title>
   <style>
     #cameraContainer {
       position: relative;
@@ -24,18 +24,23 @@
   </style>
 </head>
 <body>
-  <h1>Tap to crop area</h1>
+  <h1>Tap to Crop and Read Barcode</h1>
   <div id="cameraContainer">
     <video id="camera" autoplay playsinline></video>
     <canvas id="overlay"></canvas>
   </div>
   <canvas id="cropped" width="200" height="150"></canvas>
+  <p><strong>Result:</strong> <span id="result">None</span></p>
+
+  <!-- Quagga2 via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
 
   <script>
     const video = document.getElementById('camera');
     const overlay = document.getElementById('overlay');
     const croppedCanvas = document.getElementById('cropped');
     const croppedCtx = croppedCanvas.getContext('2d');
+    const resultSpan = document.getElementById('result');
 
     const cropWidth = 200;
     const cropHeight = 150;
@@ -51,7 +56,7 @@
         };
       });
 
-    // Draw crop box when user taps/clicks
+    // On tap/click: crop and decode
     video.addEventListener('click', function (e) {
       const rect = video.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -65,7 +70,6 @@
 
       drawOverlay(cropX, cropY);
 
-      // Draw cropped area to a separate canvas
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = video.videoWidth;
       tempCanvas.height = video.videoHeight;
@@ -75,7 +79,8 @@
       croppedCtx.clearRect(0, 0, croppedCanvas.width, croppedCanvas.height);
       croppedCtx.drawImage(tempCanvas, cropX, cropY, cropWidth, cropHeight, 0, 0, croppedCanvas.width, croppedCanvas.height);
 
-      // Ready for barcode decoding (next step)
+      // Decode the barcode
+      decodeBarcodeFromCanvas(croppedCanvas);
     });
 
     function drawOverlay(x, y) {
@@ -84,6 +89,26 @@
       ctx.strokeStyle = 'red';
       ctx.lineWidth = 2;
       ctx.strokeRect(x, y, cropWidth, cropHeight);
+    }
+
+    function decodeBarcodeFromCanvas(canvas) {
+      Quagga.decodeSingle({
+        src: canvas.toDataURL(),
+        numOfWorkers: 0,
+        inputStream: {
+          size: 800
+        },
+        decoder: {
+          readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader"]
+        },
+      }, function (result) {
+        if (result && result.codeResult) {
+          resultSpan.textContent = result.codeResult.code;
+          console.log("Decoded:", result.codeResult.code);
+        } else {
+          resultSpan.textContent = "No barcode detected.";
+        }
+      });
     }
   </script>
 </body>
