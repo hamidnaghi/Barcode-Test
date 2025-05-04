@@ -2,105 +2,111 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Barcode Scanner with Cropping</title>
+  <title>Barcode Auto Detect & Crop</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 0;
-      background: #f0f0f0;
-    }
-    #container {
-      position: relative;
-      display: inline-block;
-    }
-    #video, #overlay {
-      width: 640px;
-      height: 480px;
-      border: 1px solid #ccc;
-    }
+    body { font-family: sans-serif; text-align: center; }
+    video, canvas { max-width: 100%; height: auto; border: 1px solid #ccc; }
+    #cropCanvas { border: 2px solid red; margin-top: 10px; }
+    #result { margin-top: 10px; font-weight: bold; }
+    #wrapper { position: relative; display: inline-block; }
     #overlay {
       position: absolute;
-      top: 0;
-      left: 0;
+      border: 2px solid red;
       pointer-events: none;
-    }
-    #result {
-      margin-top: 20px;
-      font-size: 1.2em;
     }
   </style>
 </head>
 <body>
-  <h1>Tap to Decode Barcode</h1>
-  <div id="container">
-    <video id="video" autoplay></video>
-    <canvas id="overlay"></canvas>
+  <h2>Auto Detect and Crop Barcode</h2>
+  <div id="wrapper">
+    <video id="video" autoplay playsinline></video>
+    <div id="overlay"></div>
   </div>
-  <div id="result">Result: <span id="barcodeText">[None]</span></div>
+  <canvas id="cropCanvas" width="200" height="100"></canvas>
+  <div id="result">Result: <span id="barcodeResult">Waiting...</span></div>
 
+  <!-- ZXing-js Browser Library (minified and offline-capable) -->
   <script type="module">
-    import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm';
+    import { BrowserMultiFormatReader } from "https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm";
 
+    const codeReader = new BrowserMultiFormatReader();
     const video = document.getElementById('video');
     const overlay = document.getElementById('overlay');
-    const barcodeText = document.getElementById('barcodeText');
-    const reader = new BrowserMultiFormatReader();
+    const cropCanvas = document.getElementById('cropCanvas');
+    const cropCtx = cropCanvas.getContext('2d');
+    const barcodeResult = document.getElementById('barcodeResult');
 
-    // Set up camera stream
-    async function initCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      video.srcObject = stream;
-      await video.play();
-    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(stream => {
+        video.srcObject = stream;
+        video.addEventListener('loadedmetadata', () => {
+          detectLoop();
+        });
+      });
 
-    function drawOverlay(x, y, w, h) {
-      const ctx = overlay.getContext('2d');
-      ctx.clearRect(0, 0, overlay.width, overlay.height);
-      ctx.strokeStyle = 'red';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, w, h);
-    }
+    async function detectLoop() {
+      const offCanvas = document.createElement('canvas');
+      const ctx = offCanvas.getContext('2d');
 
-    video.addEventListener('click', async (e) => {
-      const rect = video.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+      offCanvas.width = width;
+      offCanvas.height = height;
 
-      const scaleX = video.videoWidth / video.clientWidth;
-      const scaleY = video.videoHeight / video.clientHeight;
-      const cropWidth = 150;
-      const cropHeight = 80;
-      const marginX = 20;
-
-      const cropX = x * scaleX - cropWidth / 2 - marginX;
-      const cropY = y * scaleY - cropHeight / 2;
-      const cropW = cropWidth + 2 * marginX;
-      const cropH = cropHeight;
-
-      drawOverlay(cropX / scaleX, cropY / scaleY, cropW / scaleX, cropH / scaleY);
-
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = video.videoWidth;
-      tempCanvas.height = video.videoHeight;
-      const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
-
-      const croppedCanvas = document.createElement('canvas');
-      croppedCanvas.width = cropW;
-      croppedCanvas.height = cropH;
-      const croppedCtx = croppedCanvas.getContext('2d');
-      croppedCtx.drawImage(tempCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
+      ctx.drawImage(video, 0, 0, width, height);
       try {
-        const result = await reader.decodeFromImageElement(croppedCanvas);
-        barcodeText.textContent = result.getText();
-      } catch (err) {
-        barcodeText.textContent = '[No barcode found]';
-      }
-    });
+        const result = await codeReader.decodeFromImageElement(offCanvas);
+        if (result) {
+          const points = result.resultPoints;
+          if (points.length >= 2) {
+            const x1 = points[0].x;
+            const y1 = points[0].y;
+            const x2 = points[1].x;
+            const y2 = points[1].y;
+            const minX = Math.min(x1, x2);
+            const minY = Math.min(y1, y2);
+            const maxX = Math.max(x1, x2);
+            const maxY = Math.max(y1, y2);
+            const padding = 20;
 
-    initCamera();
+            const sx = Math.max(0, minX - padding);
+            const sy = Math.max(0, minY - padding);
+            const sw = Math.min(width - sx, maxX - minX + 2 * padding);
+            const sh = Math.min(height - sy, maxY - minY + 2 * padding);
+
+            // Draw overlay rectangle
+            overlay.style.left = `${sx * video.offsetWidth / width}px`;
+            overlay.style.top = `${sy * video.offsetHeight / height}px`;
+            overlay.style.width = `${sw * video.offsetWidth / width}px`;
+            overlay.style.height = `${sh * video.offsetHeight / height}px`;
+
+            // Crop and show
+            cropCanvas.width = sw;
+            cropCanvas.height = sh;
+            cropCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+
+            // Decode again from cropped
+            const cropDataUrl = cropCanvas.toDataURL();
+            const img = new Image();
+            img.onload = async () => {
+              try {
+                const finalResult = await codeReader.decodeFromImage(img);
+                barcodeResult.textContent = finalResult.text;
+              } catch {
+                barcodeResult.textContent = "Barcode not detected in crop.";
+              }
+            };
+            img.src = cropDataUrl;
+          }
+        }
+      } catch {
+        overlay.style.width = '0px';
+        overlay.style.height = '0px';
+        barcodeResult.textContent = "No barcode detected.";
+      }
+
+      requestAnimationFrame(detectLoop);
+    }
   </script>
 </body>
 </html>
