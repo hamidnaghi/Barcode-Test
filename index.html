@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Always Crop on Tap</title>
+  <title>Barcode Detector with Flashlight and Capture</title>
   <style>
     body { font-family: sans-serif; text-align: center; margin: 0; padding: 0; }
     video, canvas { max-width: 100%; display: block; margin: auto; }
@@ -13,14 +13,19 @@
       pointer-events: none;
     }
     #cropped { margin-top: 10px; border: 1px solid #ccc; }
+    button { margin: 10px; padding: 10px 20px; font-size: 16px; }
   </style>
 </head>
 <body>
-  <h2>Tap on Barcode Area (Always Crops)</h2>
+  <h2>Barcode Detection</h2>
   <div id="container">
     <video id="video" autoplay playsinline></video>
     <canvas id="overlay"></canvas>
     <canvas id="lineCanvas"></canvas>
+  </div>
+  <div>
+    <button id="captureBtn">Capture Barcode</button>
+    <button id="flashBtn">Toggle Flashlight</button>
   </div>
   <div>
     <h3>Cropped Area</h3>
@@ -34,33 +39,39 @@
     const croppedCanvas = document.getElementById('cropped');
     const ctxOverlay = overlay.getContext('2d');
     const ctxLine = lineCanvas.getContext('2d');
+    const flashBtn = document.getElementById('flashBtn');
+    const captureBtn = document.getElementById('captureBtn');
 
     let guideY = 0;
+    let track;
+    let torchOn = false;
 
-    navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { exact: "environment" } }
-    }).then(stream => {
-      video.srcObject = stream;
-    }).catch(() => {
-      alert("Back camera not found. Using default.");
-      return navigator.mediaDevices.getUserMedia({ video: true });
-    }).then(stream => {
-      if (stream) video.srcObject = stream;
-    });
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: "environment" } }
+        });
+        video.srcObject = stream;
+        track = stream.getVideoTracks()[0];
+      } catch {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        track = stream.getVideoTracks()[0];
+      }
+    }
+
+    initCamera();
 
     video.addEventListener('loadedmetadata', () => {
       const width = video.videoWidth;
       const height = video.videoHeight;
 
-      overlay.width = width;
-      overlay.height = height;
-      overlay.style.width = video.offsetWidth + 'px';
-      overlay.style.height = video.offsetHeight + 'px';
-
-      lineCanvas.width = width;
-      lineCanvas.height = height;
-      lineCanvas.style.width = video.offsetWidth + 'px';
-      lineCanvas.style.height = video.offsetHeight + 'px';
+      [overlay, lineCanvas].forEach(canvas => {
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.width = video.offsetWidth + 'px';
+        canvas.style.height = video.offsetHeight + 'px';
+      });
 
       guideY = Math.floor(height / 2);
       drawGuideLine();
@@ -76,63 +87,58 @@
       ctxLine.stroke();
     }
 
-    overlay.addEventListener('click', async (e) => {
-      const rect = overlay.getBoundingClientRect();
-      const scaleX = video.videoWidth / rect.width;
-      const scaleY = video.videoHeight / rect.height;
-      const clickX = Math.floor((e.clientX - rect.left) * scaleX);
+    function brightness(data, x, y, w) {
+      const i = (y * w + x) * 4;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      return 0.299 * r + 0.587 * g + 0.114 * b;
+    }
+
+    function isDark(data, x, y, w) {
+      return brightness(data, x, y, w) < 120;
+    }
+
+    captureBtn.addEventListener('click', () => {
+      const width = video.videoWidth;
+      const height = video.videoHeight;
       const y = guideY;
 
       const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = video.videoWidth;
-      tempCanvas.height = video.videoHeight;
+      tempCanvas.width = width;
+      tempCanvas.height = height;
       const tempCtx = tempCanvas.getContext('2d');
       tempCtx.drawImage(video, 0, 0);
-      const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const imageData = tempCtx.getImageData(0, 0, width, height);
       const data = imageData.data;
 
-      const brightness = (x, y) => {
-        const i = (y * tempCanvas.width + x) * 4;
-        const r = data[i], g = data[i + 1], b = data[i + 2];
-        return 0.299 * r + 0.587 * g + 0.114 * b;
-      };
+      const centerX = Math.floor(width / 2);
 
-      const isDark = (x, y) => brightness(x, y) < 120;
-
-      // Trace left and right
       let maxGap = 5, gap = 0;
-      let left = clickX, right = clickX;
+      let left = centerX, right = centerX;
+
       while (left > 1 && gap < maxGap) {
-        if (isDark(left, y)) {
-          gap = 0;
-        } else {
-          gap++;
-        }
+        if (isDark(data, left, y, width)) gap = 0;
+        else gap++;
         left--;
       }
 
       gap = 0;
-      while (right < tempCanvas.width - 2 && gap < maxGap) {
-        if (isDark(right, y)) {
-          gap = 0;
-        } else {
-          gap++;
-        }
+      while (right < width - 2 && gap < maxGap) {
+        if (isDark(data, right, y, width)) gap = 0;
+        else gap++;
         right++;
       }
 
       // Height bounds
-      let topY = tempCanvas.height, bottomY = 0;
+      let topY = height, bottomY = 0;
       for (let x = left; x <= right; x++) {
-        for (let cy = 0; cy < tempCanvas.height; cy++) {
-          if (isDark(x, cy)) {
+        for (let cy = 0; cy < height; cy++) {
+          if (isDark(data, x, cy, width)) {
             if (cy < topY) topY = cy;
             if (cy > bottomY) bottomY = cy;
           }
         }
       }
 
-      // Fallback if height too small
       if (bottomY - topY < 10) {
         topY = y - 50;
         bottomY = y + 50;
@@ -140,18 +146,33 @@
 
       const w = right - left;
       const h = bottomY - topY;
-      ctxOverlay.clearRect(0, 0, overlay.width, overlay.height);
+
+      ctxOverlay.clearRect(0, 0, width, height);
       ctxOverlay.strokeStyle = "lime";
       ctxOverlay.lineWidth = 2;
       ctxOverlay.strokeRect(left, topY, w, h);
 
-      // Crop and show
       if (w > 0 && h > 0) {
         const croppedCtx = croppedCanvas.getContext('2d');
         croppedCanvas.width = w;
         croppedCanvas.height = h;
         const croppedData = tempCtx.getImageData(left, topY, w, h);
         croppedCtx.putImageData(croppedData, 0, 0);
+      }
+    });
+
+    flashBtn.addEventListener('click', async () => {
+      if (!track) return alert("No video track found.");
+      const capabilities = track.getCapabilities();
+      if (!capabilities.torch) return alert("Torch not supported on this device.");
+
+      try {
+        await track.applyConstraints({ advanced: [{ torch: !torchOn }] });
+        torchOn = !torchOn;
+        flashBtn.textContent = torchOn ? "Turn Flash Off" : "Turn Flash On";
+      } catch (err) {
+        console.error("Flash toggle error:", err);
+        alert("Failed to toggle flashlight.");
       }
     });
   </script>
