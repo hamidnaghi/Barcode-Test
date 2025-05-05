@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Barcode-like Region Detection</title>
+  <title>Always Crop on Tap</title>
   <style>
     body { font-family: sans-serif; text-align: center; margin: 0; padding: 0; }
     video, canvas { max-width: 100%; display: block; margin: auto; }
@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <h2>Align and Tap to Detect Barcode-like Region</h2>
+  <h2>Tap on Barcode Area (Always Crops)</h2>
   <div id="container">
     <video id="video" autoplay playsinline></video>
     <canvas id="overlay"></canvas>
@@ -34,34 +34,35 @@
     const croppedCanvas = document.getElementById('cropped');
     const ctxOverlay = overlay.getContext('2d');
     const ctxLine = lineCanvas.getContext('2d');
-    const brightnessThreshold = 100;
 
     let guideY = 0;
 
-    // Start back camera
     navigator.mediaDevices.getUserMedia({
       video: { facingMode: { exact: "environment" } }
     }).then(stream => {
       video.srcObject = stream;
     }).catch(() => {
-      alert("Back camera not found. Trying default camera...");
+      alert("Back camera not found. Using default.");
       return navigator.mediaDevices.getUserMedia({ video: true });
     }).then(stream => {
       if (stream) video.srcObject = stream;
     });
 
     video.addEventListener('loadedmetadata', () => {
-      overlay.width = video.videoWidth;
-      overlay.height = video.videoHeight;
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+
+      overlay.width = width;
+      overlay.height = height;
       overlay.style.width = video.offsetWidth + 'px';
       overlay.style.height = video.offsetHeight + 'px';
 
-      lineCanvas.width = video.videoWidth;
-      lineCanvas.height = video.videoHeight;
+      lineCanvas.width = width;
+      lineCanvas.height = height;
       lineCanvas.style.width = video.offsetWidth + 'px';
       lineCanvas.style.height = video.offsetHeight + 'px';
 
-      guideY = Math.floor(video.videoHeight / 2);
+      guideY = Math.floor(height / 2);
       drawGuideLine();
     });
 
@@ -79,8 +80,7 @@
       const rect = overlay.getBoundingClientRect();
       const scaleX = video.videoWidth / rect.width;
       const scaleY = video.videoHeight / rect.height;
-      const x = Math.floor((e.clientX - rect.left) * scaleX);
-
+      const clickX = Math.floor((e.clientX - rect.left) * scaleX);
       const y = guideY;
 
       const tempCanvas = document.createElement('canvas');
@@ -91,57 +91,67 @@
       const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
       const data = imageData.data;
 
-      function getBrightness(x, y) {
+      const brightness = (x, y) => {
         const i = (y * tempCanvas.width + x) * 4;
         const r = data[i], g = data[i + 1], b = data[i + 2];
         return 0.299 * r + 0.587 * g + 0.114 * b;
-      }
+      };
 
-      function isDark(x, y) {
-        return getBrightness(x, y) < brightnessThreshold;
-      }
+      const isDark = (x, y) => brightness(x, y) < 120;
 
-      // Check if vertical line at X is mostly dark
-      function isVerticalLine(x) {
-        let darkCount = 0;
-        for (let i = 0; i < tempCanvas.height; i++) {
-          if (isDark(x, i)) darkCount++;
+      // Trace left and right
+      let maxGap = 5, gap = 0;
+      let left = clickX, right = clickX;
+      while (left > 1 && gap < maxGap) {
+        if (isDark(left, y)) {
+          gap = 0;
+        } else {
+          gap++;
         }
-        return darkCount > tempCanvas.height * 0.4;
+        left--;
       }
 
-      let startX = x, endX = x;
-      while (startX > 0 && isVerticalLine(startX - 1)) startX--;
-      while (endX < tempCanvas.width - 1 && isVerticalLine(endX + 1)) endX++;
-
-      if (endX - startX < 5) {
-        alert('No vertical lines found.');
-        return;
+      gap = 0;
+      while (right < tempCanvas.width - 2 && gap < maxGap) {
+        if (isDark(right, y)) {
+          gap = 0;
+        } else {
+          gap++;
+        }
+        right++;
       }
 
-      // Determine top and bottom Y
+      // Height bounds
       let topY = tempCanvas.height, bottomY = 0;
-      for (let cx = startX; cx <= endX; cx++) {
+      for (let x = left; x <= right; x++) {
         for (let cy = 0; cy < tempCanvas.height; cy++) {
-          if (isDark(cx, cy)) {
+          if (isDark(x, cy)) {
             if (cy < topY) topY = cy;
             if (cy > bottomY) bottomY = cy;
           }
         }
       }
 
+      // Fallback if height too small
+      if (bottomY - topY < 10) {
+        topY = y - 50;
+        bottomY = y + 50;
+      }
+
+      const w = right - left;
+      const h = bottomY - topY;
       ctxOverlay.clearRect(0, 0, overlay.width, overlay.height);
       ctxOverlay.strokeStyle = "lime";
       ctxOverlay.lineWidth = 2;
-      ctxOverlay.strokeRect(startX, topY, endX - startX, bottomY - topY);
+      ctxOverlay.strokeRect(left, topY, w, h);
 
-      const cropWidth = endX - startX;
-      const cropHeight = bottomY - topY;
-      if (cropWidth > 0 && cropHeight > 0) {
+      // Crop and show
+      if (w > 0 && h > 0) {
         const croppedCtx = croppedCanvas.getContext('2d');
-        croppedCanvas.width = cropWidth;
-        croppedCanvas.height = cropHeight;
-        croppedCtx.putImageData(tempCtx.getImageData(startX, topY, cropWidth, cropHeight), 0, 0);
+        croppedCanvas.width = w;
+        croppedCanvas.height = h;
+        const croppedData = tempCtx.getImageData(left, topY, w, h);
+        croppedCtx.putImageData(croppedData, 0, 0);
       }
     });
   </script>
