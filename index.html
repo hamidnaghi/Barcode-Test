@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Barcode Detector with Flash</title>
+    <title>Barcode Scanner with Flash & Decoding</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -74,10 +74,29 @@
             min-height: 20px;
             text-align: center;
         }
+        #decodedResult {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 5px;
+            display: none;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0,0,0,.3);
+            border-radius: 50%;
+            border-top-color: #4285f4;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
-    <h2 style="text-align:center;">Barcode Detector with Flash</h2>
+    <h2 style="text-align:center;">Barcode Scanner with Flash</h2>
     <p id="status">Ready to start</p>
     
     <div id="scanner-container">
@@ -87,13 +106,17 @@
 
     <div class="controls">
         <button id="startButton">Start Camera</button>
-        <button id="flashButton">Turn On Flash</button>
-        <button id="captureButton" disabled>Capture Frame</button>
+        <button id="flashButton" disabled>Turn On Flash</button>
+        <button id="captureButton" disabled>Capture & Decode</button>
     </div>
     
     <div id="results">
         <img id="croppedResult">
+        <div id="decodedResult"></div>
     </div>
+
+    <!-- Include ZXing library for barcode decoding -->
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest"></script>
 
     <script>
         // Elements
@@ -103,6 +126,7 @@
         const flashButton = document.getElementById('flashButton');
         const captureButton = document.getElementById('captureButton');
         const croppedResult = document.getElementById('croppedResult');
+        const decodedResult = document.getElementById('decodedResult');
         const statusText = document.getElementById('status');
 
         // State
@@ -111,7 +135,8 @@
             track: null,
             scanInterval: null,
             flashOn: false,
-            lastFrameTime: 0
+            lastFrameTime: 0,
+            codeReader: new ZXing.BrowserMultiFormatReader()
         };
 
         // Configuration
@@ -297,14 +322,31 @@
             targetBox.style.display = 'block';
         }
 
-        // Capture frame
-        function captureFrame() {
+        // Decode barcode from image
+        async function decodeBarcode(imageData) {
+            try {
+                statusText.innerHTML = "Decoding barcode <span class='loading'></span>";
+                
+                // Convert to grayscale for ZXing
+                const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(imageData);
+                const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
+                
+                const result = await state.codeReader.decode(binaryBitmap);
+                return result.text;
+            } catch (error) {
+                console.log("Decoding error:", error);
+                return null;
+            }
+        }
+
+        // Capture frame and decode
+        async function captureAndDecode() {
             if (!targetBox.style.display || targetBox.style.display === 'none') {
                 statusText.textContent = "No barcode detected";
                 return;
             }
             
-            safeExecute(() => {
+            safeExecute(async () => {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
@@ -330,9 +372,22 @@
                 canvas.height = cropHeight;
                 ctx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
                 
+                // Show captured image
                 croppedResult.src = canvas.toDataURL('image/jpeg');
                 croppedResult.style.display = 'block';
-                statusText.textContent = "Frame captured!";
+                
+                // Decode the barcode
+                const decodedText = await decodeBarcode(canvas);
+                
+                if (decodedText) {
+                    decodedResult.textContent = `Decoded: ${decodedText}`;
+                    decodedResult.style.display = 'block';
+                    statusText.textContent = "Decoding successful!";
+                } else {
+                    decodedResult.textContent = "Could not decode barcode";
+                    decodedResult.style.display = 'block';
+                    statusText.textContent = "Decoding failed - try again";
+                }
             }, "Capture failed");
         }
 
@@ -359,7 +414,7 @@
         // Event listeners
         startButton.addEventListener('click', () => safeExecute(startCamera, "Start failed"));
         flashButton.addEventListener('click', () => safeExecute(toggleFlash, "Flash toggle failed"));
-        captureButton.addEventListener('click', () => safeExecute(captureFrame, "Capture failed"));
+        captureButton.addEventListener('click', () => safeExecute(captureAndDecode, "Capture failed"));
         
         window.addEventListener('beforeunload', () => safeExecute(cleanup, "Cleanup failed"));
     </script>
