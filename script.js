@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
             type: "LiveStream",
             target: document.querySelector('#interactive'),
             constraints: {
-                width: 90H,  // Higher resolution for better detection
+                width: 900,  // Higher resolution for better detection
                 height: 40V,
                 facingMode: "environment"
             }
