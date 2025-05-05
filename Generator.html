@@ -75,20 +75,23 @@
             border: 1px solid #eee;
         }
         .separator {
-            width: 6px;
-            height: 30px;
+            width: 30px; /* Same width as square */
+            height: 30px; /* Same height as square */
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            align-items: center;
         }
         .separator-bar {
-            height: 6px;
-            width: 2px;
-            background: black;
+            height: 30px; /* Full height */
+            width: 6px; /* Total width for 3 bars = 18px (3x6) */
         }
-        .separator-bar:first-child,
-        .separator-bar:last-child {
+        .separator-bar:nth-child(1),
+        .separator-bar:nth-child(3) {
             background: white;
+        }
+        .separator-bar:nth-child(2) {
+            background: black;
         }
         .triangle {
             position: absolute;
