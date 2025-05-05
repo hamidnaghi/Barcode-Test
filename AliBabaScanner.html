@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BlockCode Decoder</title>
+  <title>Stable Barcode Frame Detector</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -67,7 +67,7 @@
   </style>
 </head>
 <body>
-  <h2 style="text-align:center;">BlockCode Decoder</h2>
+  <h2 style="text-align:center;">Stable Frame Detector</h2>
   <p id="status">Ready to start</p>
   <div id="scanner-container">
     <video id="video" playsinline autoplay muted></video>
@@ -79,7 +79,6 @@
   </div>
   <div id="results">
     <img id="croppedResult">
-    <div id="decodedResult"></div>
   </div>
 
   <script>
@@ -89,7 +88,6 @@
       startButton: document.getElementById('startButton'),
       captureButton: document.getElementById('captureButton'),
       croppedResult: document.getElementById('croppedResult'),
-      decodedResult: document.getElementById('decodedResult'),
       status: document.getElementById('status')
     };
 
@@ -148,7 +146,7 @@
         });
 
         elements.captureButton.disabled = false;
-        elements.status.textContent = "Point at BlockCode";
+        elements.status.textContent = "Point at barcode";
         startScanning();
       } catch (error) {
         elements.status.textContent = "Camera error: " + error.message;
@@ -259,101 +257,40 @@
     }
 
     function captureFrame() {
-      if (!state.detectionBox) return;
-      safeExecute(async () => {
+      if (!state.detectionBox) {
+        elements.status.textContent = "No barcode detected. Try again.";
+        return;
+      }
+
+      safeExecute(() => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         const video = elements.video;
 
-        canvas.width = state.detectionBox.width * (1 + 2 * config.padding);
-        canvas.height = state.detectionBox.height * (1 + 2 * config.padding);
+        // Calculate crop dimensions
+        const originalWidth = video.videoWidth;
+        const originalHeight = video.videoHeight;
+        const scaledWidth = originalWidth * (1 + 2 * config.padding);
+        const scaledHeight = originalHeight * (1 + 2 * config.padding);
+
+        canvas.width = scaledWidth;
+        canvas.height = scaledHeight;
 
         const cropX = Math.max(0, state.detectionBox.x - state.detectionBox.width * config.padding);
         const cropY = Math.max(0, state.detectionBox.y - state.detectionBox.height * config.padding);
-        const cropWidth = Math.min(video.videoWidth - cropX, canvas.width);
-        const cropHeight = Math.min(video.videoHeight - cropY, canvas.height);
+        const cropWidth = Math.min(originalWidth - cropX, scaledWidth);
+        const cropHeight = Math.min(originalHeight - cropY, scaledHeight);
 
         ctx.drawImage(
-          video, cropX, cropY, cropWidth, cropHeight,
+          video,
+          cropX, cropY, cropWidth, cropHeight,
           0, 0, canvas.width, canvas.height
         );
 
         elements.croppedResult.src = canvas.toDataURL('image/jpeg');
         elements.croppedResult.style.display = 'block';
-
-        // Decode BlockCode
-        const decoded = await decodeBlockCode(canvas);
-        elements.decodedResult.textContent = `Decoded Value: ${decoded}`;
+        elements.status.textContent = "Frame captured!";
       }, "Capture failed");
-    }
-
-    async function decodeBlockCode(canvas) {
-      const ctx = canvas.getContext('2d');
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const pixels = imageData.data;
-
-      // Determine grid size (e.g., 4x8)
-      const gridSize = getGridSize(canvas.width, canvas.height);
-      const rows = gridSize.rows;
-      const cols = gridSize.cols;
-
-      let result = [];
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          const square = getSquarePixels(col, row, cols, rows, pixels, canvas.width);
-          const value = decodeSquare(square);
-          result.push(value);
-        }
-      }
-
-      // Combine two squares per byte
-      let finalResult = [];
-      for (let i = 0; i < result.length; i += 2) {
-        const high = result[i];
-        const low = result[i+1];
-        finalResult.push((high << 4) | low);
-      }
-
-      return finalResult.join(', ');
-    }
-
-    function getGridSize(width, height) {
-      // Implement logic to detect grid size based on aspect ratio
-      // Example: Assume 4x8 grid
-      return { rows: 4, cols: 8 };
-    }
-
-    function getSquarePixels(col, row, cols, rows, pixels, canvasWidth) {
-      const squareWidth = canvasWidth / cols;
-      const startX = col * squareWidth;
-      const startY = row * (canvas.height / rows);
-      const endX = startX + squareWidth;
-      const endY = startY + (canvas.height / rows);
-
-      const squarePixels = [];
-      for (let y = startY; y < endY; y++) {
-        for (let x = startX; x < endX; x++) {
-          const index = (y * canvasWidth + x) * 4;
-          squarePixels.push(pixels[index]); // Use luminance for simplicity
-        }
-      }
-      return squarePixels;
-    }
-
-    function decodeSquare(pixels) {
-      // Implement logic to detect T/R/B/L triangles
-      // Example: Check corners for darkness
-      const top = isDark(pixels.slice(0, 10));
-      const right = isDark(pixels.slice(pixels.length - 10, pixels.length));
-      const bottom = isDark(pixels.slice(-10));
-      const left = isDark(pixels.slice(0, 10));
-
-      return (top << 3) | (right << 2) | (bottom << 1) | left;
-    }
-
-    function isDark(samples) {
-      const avg = samples.reduce((sum, val) => sum + val, 0) / samples.length;
-      return avg < 128;
     }
 
     function stopCamera() {
