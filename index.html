@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stable Barcode Frame Detector</title>
+  <title>Barcode Frame Detector with Flash</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -31,13 +31,6 @@
       border: 3px solid #00FF00;
       background: rgba(0, 255, 0, 0.2);
       display: none;
-      pointer-events: none;
-    }
-    #debugCanvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: 10;
       pointer-events: none;
     }
     .controls {
@@ -74,16 +67,16 @@
   </style>
 </head>
 <body>
-  <h2 style="text-align:center;">Stable Frame Detector</h2>
+  <h2 style="text-align:center;">Barcode Frame Detector with Flash</h2>
   <p id="status">Ready to start</p>
   <div id="scanner-container">
     <video id="video" playsinline autoplay muted></video>
-    <canvas id="debugCanvas"></canvas>
     <div id="target-box"></div>
   </div>
   <div class="controls">
     <button id="startButton">Start Camera</button>
     <button id="captureButton" disabled>Capture Frame</button>
+    <button id="flashButton" disabled>Turn On Flash</button>
   </div>
   <div id="results">
     <img id="croppedResult">
@@ -92,19 +85,21 @@
   <script>
     const elements = {
       video: document.getElementById('video'),
-      debugCanvas: document.getElementById('debugCanvas'),
       targetBox: document.getElementById('target-box'),
       startButton: document.getElementById('startButton'),
       captureButton: document.getElementById('captureButton'),
+      flashButton: document.getElementById('flashButton'),
       croppedResult: document.getElementById('croppedResult'),
       status: document.getElementById('status')
     };
 
     const state = {
       stream: null,
+      videoTrack: null,
       detectionBox: null,
       isScanning: false,
-      lastFrameTime: 0
+      lastFrameTime: 0,
+      torchOn: false
     };
 
     const config = {
@@ -112,8 +107,8 @@
       minHeight: 20,
       maxWidth: 400,
       maxHeight: 150,
-      edgeThreshold: 15,           // Lowered from 30
-      minEdgeDensity: 0.1,         // Slightly less strict
+      edgeThreshold: 15,
+      minEdgeDensity: 0.1,
       frameRate: 10,
       padding: 0.15
     };
@@ -134,12 +129,12 @@
       elements.startButton.disabled = true;
 
       try {
-        state.stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
+        state.stream = await navigator.mediaDevices.getUserMedia({
+          video: {
             facingMode: 'environment',
             width: { ideal: 1280 },
             height: { ideal: 720 }
-          } 
+          }
         });
 
         elements.video.srcObject = state.stream;
@@ -155,6 +150,20 @@
 
         elements.captureButton.disabled = false;
         elements.status.textContent = "Point at barcode";
+
+        state.videoTrack = state.stream.getVideoTracks()[0];
+
+        // Check for flash support
+        if (state.videoTrack && typeof state.videoTrack.getCapabilities === 'function') {
+          const capabilities = state.videoTrack.getCapabilities();
+          if (capabilities && capabilities.torch) {
+            elements.flashButton.disabled = false;
+          } else {
+            elements.flashButton.disabled = true;
+            elements.status.textContent = "Flash not supported on this device.";
+          }
+        }
+
         startScanning();
       } catch (error) {
         elements.status.textContent = "Camera error: " + error.message;
@@ -168,7 +177,6 @@
       state.isScanning = true;
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      const debugCtx = elements.debugCanvas.getContext('2d');
 
       function processFrame() {
         const now = Date.now();
@@ -183,16 +191,10 @@
         safeExecute(() => {
           canvas.width = elements.video.videoWidth;
           canvas.height = elements.video.videoHeight;
-          debugCtx.canvas.width = canvas.width;
-          debugCtx.canvas.height = canvas.height;
-
           ctx.drawImage(elements.video, 0, 0, canvas.width, canvas.height);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const edges = findEdges(imageData);
-
           state.detectionBox = findBarcodeArea(edges, canvas.width, canvas.height);
-
-          drawDebugOverlay(debugCtx, edges, canvas.width, canvas.height);
 
           if (state.detectionBox) {
             updateTargetBox();
@@ -261,18 +263,6 @@
       return null;
     }
 
-    function drawDebugOverlay(ctx, edgeData, width, height) {
-      const debugImgData = ctx.createImageData(width, height);
-      for (let i = 0; i < edgeData.length; i++) {
-        const val = edgeData[i];
-        debugImgData.data[i * 4] = val;
-        debugImgData.data[i * 4 + 1] = val;
-        debugImgData.data[i * 4 + 2] = val;
-        debugImgData.data[i * 4 + 3] = 100;
-      }
-      ctx.putImageData(debugImgData, 0, 0);
-    }
-
     function updateTargetBox() {
       const videoRect = elements.video.getBoundingClientRect();
       const scaleX = videoRect.width / elements.video.videoWidth;
@@ -310,19 +300,41 @@
       }, "Capture failed");
     }
 
+    function toggleFlash() {
+      if (!state.videoTrack) return;
+
+      const torch = !state.torchOn;
+      const constraints = { advanced: [{ torch: torch }] };
+
+      state.videoTrack.applyConstraints(constraints)
+        .then(() => {
+          state.torchOn = torch;
+          elements.flashButton.textContent = torch ? 'Turn Off Flash' : 'Turn On Flash';
+          elements.status.textContent = torch ? 'Flash turned ON' : 'Flash turned OFF';
+        })
+        .catch(err => {
+          console.error("Failed to toggle flash:", err);
+          elements.status.textContent = "Flash error: " + err.message;
+        });
+    }
+
     function stopCamera() {
       if (state.stream) {
         state.stream.getTracks().forEach(track => track.stop());
         state.stream = null;
+        state.videoTrack = null;
       }
       state.isScanning = false;
       elements.targetBox.style.display = 'none';
       elements.startButton.disabled = false;
       elements.captureButton.disabled = true;
+      elements.flashButton.disabled = true;
+      elements.flashButton.textContent = 'Turn On Flash';
     }
 
     elements.startButton.addEventListener('click', () => safeExecute(startCamera, "Start failed"));
     elements.captureButton.addEventListener('click', () => safeExecute(captureFrame, "Capture failed"));
+    elements.flashButton.addEventListener('click', () => safeExecute(toggleFlash, "Flash toggle failed"));
     window.addEventListener('beforeunload', () => safeExecute(stopCamera, "Cleanup failed"));
   </script>
 </body>
