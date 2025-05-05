@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Precise Barcode Frame Detector</title>
+    <title>Enhanced Barcode Frame Detector</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -16,28 +16,25 @@
             width: 100%;
             max-width: 500px;
             margin: 0 auto;
+            height: 40vh; /* Smaller viewport */
+            overflow: hidden;
+            border: 2px solid #333;
         }
         #video {
             width: 100%;
-            display: block;
+            height: 100%;
+            object-fit: cover;
             background: #000;
         }
-        #canvas {
+        #canvas, #edges {
             display: none;
-        }
-        #overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
         }
         #target-box {
             position: absolute;
             border: 3px solid #00FF00;
             background: rgba(0, 255, 0, 0.2);
             display: none;
+            pointer-events: none;
         }
         .button-container {
             text-align: center;
@@ -65,23 +62,37 @@
             color: #666;
             min-height: 20px;
         }
+        .debug-container {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 10px;
+        }
+        .debug-view {
+            border: 1px solid #ccc;
+            max-width: 45%;
+        }
     </style>
 </head>
 <body>
-    <h2 style="text-align:center;">Barcode Frame Detector</h2>
-    <p id="status">Point camera at barcode. Tap to force detection.</p>
+    <h2 style="text-align:center;">Enhanced Frame Detector</h2>
+    <p id="status">Point camera at barcode. The green box shows detection.</p>
     
     <div id="scanner-container">
         <video id="video" playsinline autoplay></video>
         <canvas id="canvas"></canvas>
-        <canvas id="edges" style="display:none;"></canvas>
-        <div id="overlay"></div>
+        <canvas id="edges"></canvas>
         <div id="target-box"></div>
     </div>
-    
+
     <div class="button-container">
         <button id="startButton">Start Camera</button>
         <button id="captureButton" disabled>Capture Frame</button>
+        <button id="toggleDebug">Show Debug</button>
+    </div>
+    
+    <div class="debug-container" id="debugViews" style="display:none;">
+        <canvas id="debugEdges" class="debug-view"></canvas>
+        <canvas id="debugRectangles" class="debug-view"></canvas>
     </div>
     
     <div id="results">
@@ -93,8 +104,18 @@
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const edgesCanvas = document.getElementById('edges');
+        const debugEdges = document.getElementById('debugEdges');
+        const debugRectangles = document.getElementById('debugRectangles');
+        const debugContainer = document.getElementById('debugViews');
+        const toggleDebug = document.getElementById('toggleDebug');
+        
+        // Contexts
         const ctx = canvas.getContext('2d');
         const edgesCtx = edgesCanvas.getContext('2d');
+        const debugEdgesCtx = debugEdges.getContext('2d');
+        const debugRectCtx = debugRectangles.getContext('2d');
+        
+        // UI Elements
         const targetBox = document.getElementById('target-box');
         const startButton = document.getElementById('startButton');
         const captureButton = document.getElementById('captureButton');
@@ -105,11 +126,16 @@
         let stream = null;
         let detectionBox = null;
         let scanInterval = null;
+        let showDebug = false;
+        
         const detectionSettings = {
-            minBarcodeWidth: 50,   // Minimum width to consider as barcode
-            minBarcodeHeight: 20,  // Minimum height
-            edgeThreshold: 30,     // Canny edge detection threshold
-            boxPadding: 0.2        // Padding around detected area
+            minWidth: 60,
+            minHeight: 20,
+            maxWidth: 400,
+            maxHeight: 150,
+            edgeThreshold: 50,
+            lineThreshold: 15,
+            padding: 0.15
         };
 
         // Start camera
@@ -125,139 +151,220 @@
                 });
                 video.srcObject = stream;
                 video.onplaying = () => {
-                    canvas.width = edgesCanvas.width = video.videoWidth;
-                    canvas.height = edgesCanvas.height = video.videoHeight;
+                    const vw = video.videoWidth;
+                    const vh = video.videoHeight;
+                    
+                    // Set canvas sizes
+                    [canvas, edgesCanvas, debugEdges, debugRectangles].forEach(c => {
+                        c.width = vw;
+                        c.height = vh;
+                    });
+                    
                     startButton.disabled = true;
                     captureButton.disabled = false;
-                    statusText.textContent = "Scanning... Point at barcode";
+                    statusText.textContent = "Detecting barcode frame...";
                     
-                    // Start automatic scanning
-                    scanInterval = setInterval(scanForBarcode, 500);
+                    // Start scanning
+                    scanInterval = setInterval(scanForBarcode, 300);
                 };
             } catch (err) {
                 statusText.textContent = "Camera error: " + err.message;
             }
         });
 
-        // Enhanced edge detection
-        function applyCannyEdgeDetection(imageData) {
-            edgesCanvas.width = imageData.width;
-            edgesCanvas.height = imageData.height;
+        // Toggle debug views
+        toggleDebug.addEventListener('click', () => {
+            showDebug = !showDebug;
+            debugContainer.style.display = showDebug ? 'flex' : 'none';
+            toggleDebug.textContent = showDebug ? 'Hide Debug' : 'Show Debug';
+        });
+
+        // Enhanced edge detection with line detection
+        function detectEdges(imageData) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const grayData = new Uint8Array(width * height);
+            const edgeData = new Uint8Array(width * height);
             
             // Convert to grayscale
-            const grayData = new Uint8Array(imageData.width * imageData.height);
             for (let i = 0, j = 0; i < imageData.data.length; i += 4, j++) {
                 grayData[j] = Math.round(0.299 * imageData.data[i] + 
                                         0.587 * imageData.data[i+1] + 
                                         0.114 * imageData.data[i+2]);
             }
             
-            // Simple Sobel operator (simplified Canny)
-            const edgeData = new Uint8Array(imageData.width * imageData.height);
-            const threshold = detectionSettings.edgeThreshold;
-            
-            for (let y = 1; y < imageData.height - 1; y++) {
-                for (let x = 1; x < imageData.width - 1; x++) {
-                    const i = y * imageData.width + x;
+            // Sobel edge detection
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const i = y * width + x;
                     
-                    // Sobel kernels
-                    const gx = -grayData[i-1-imageData.width] - 2*grayData[i-1] - grayData[i-1+imageData.width] +
-                                grayData[i+1-imageData.width] + 2*grayData[i+1] + grayData[i+1+imageData.width];
+                    const gx = -grayData[i-1-width] - 2*grayData[i-1] - grayData[i-1+width] +
+                                grayData[i+1-width] + 2*grayData[i+1] + grayData[i+1+width];
                     
-                    const gy = -grayData[i-1-imageData.width] - 2*grayData[i-imageData.width] - grayData[i+1-imageData.width] +
-                                grayData[i-1+imageData.width] + 2*grayData[i+imageData.width] + grayData[i+1+imageData.width];
+                    const gy = -grayData[i-1-width] - 2*grayData[i-width] - grayData[i+1-width] +
+                                grayData[i-1+width] + 2*grayData[i+width] + grayData[i+1+width];
                     
-                    const magnitude = Math.sqrt(gx*gx + gy*gy);
-                    edgeData[i] = magnitude > threshold ? 255 : 0;
+                    edgeData[i] = Math.sqrt(gx*gx + gy*gy) > detectionSettings.edgeThreshold ? 255 : 0;
                 }
             }
             
-            // Draw edges to canvas
-            const edgeImageData = edgesCtx.createImageData(imageData.width, imageData.height);
-            for (let i = 0, j = 0; i < edgeImageData.data.length; i += 4, j++) {
-                edgeImageData.data[i] = edgeImageData.data[i+1] = edgeImageData.data[i+2] = edgeData[j];
-                edgeImageData.data[i+3] = 255;
+            // Debug visualization
+            if (showDebug) {
+                const debugImage = debugEdgesCtx.createImageData(width, height);
+                for (let i = 0; i < debugImage.data.length; i += 4) {
+                    const val = edgeData[i/4];
+                    debugImage.data[i] = debugImage.data[i+1] = debugImage.data[i+2] = val;
+                    debugImage.data[i+3] = 255;
+                }
+                debugEdgesCtx.putImageData(debugImage, 0, 0);
             }
-            edgesCtx.putImageData(edgeImageData, 0, 0);
             
             return edgeData;
         }
 
-        // Find largest rectangle from edges
-        function findBarcodeFrame(edgeData, width, height) {
-            let maxRect = { x: 0, y: 0, width: 0, height: 0, edgeDensity: 0 };
+        // Find lines using Hough transform (simplified)
+        function findLines(edgeData, width, height) {
+            const lines = [];
+            const thetaSteps = 180;
+            const rhoMax = Math.sqrt(width*width + height*height);
+            const rhoSteps = Math.floor(rhoMax);
             
-            // Scan through possible rectangles (simplified approach)
-            for (let y = 0; y < height - detectionSettings.minBarcodeHeight; y += 5) {
-                for (let x = 0; x < width - detectionSettings.minBarcodeWidth; x += 5) {
-                    const rectWidth = Math.min(300, width - x);
-                    const rectHeight = Math.min(100, height - y);
-                    
-                    let edgeCount = 0;
-                    for (let dy = 0; dy < rectHeight; dy++) {
-                        for (let dx = 0; dx < rectWidth; dx++) {
-                            if (edgeData[(y + dy) * width + (x + dx)] > 0) {
-                                edgeCount++;
-                            }
+            // Accumulator array
+            const accumulator = new Array(thetaSteps).fill().map(() => new Array(rhoSteps).fill(0));
+            
+            // Build accumulator
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    if (edgeData[y * width + x] > 0) {
+                        for (let thetaIdx = 0; thetaIdx < thetaSteps; thetaIdx++) {
+                            const theta = (thetaIdx * Math.PI) / thetaSteps;
+                            const rho = x * Math.cos(theta) + y * Math.sin(theta);
+                            const rhoIdx = Math.floor((rho + rhoMax) / (2 * rhoMax) * rhoSteps);
+                            accumulator[thetaIdx][rhoIdx]++;
                         }
-                    }
-                    
-                    const edgeDensity = edgeCount / (rectWidth * rectHeight);
-                    if (edgeDensity > maxRect.edgeDensity && 
-                        rectWidth >= detectionSettings.minBarcodeWidth && 
-                        rectHeight >= detectionSettings.minBarcodeHeight) {
-                        maxRect = { x, y, width: rectWidth, height: rectHeight, edgeDensity };
                     }
                 }
             }
             
-            return maxRect.edgeDensity > 0.1 ? maxRect : null;
+            // Find strongest lines
+            for (let thetaIdx = 0; thetaIdx < thetaSteps; thetaIdx++) {
+                for (let rhoIdx = 0; rhoIdx < rhoSteps; rhoIdx++) {
+                    if (accumulator[thetaIdx][rhoIdx] > detectionSettings.lineThreshold) {
+                        const theta = (thetaIdx * Math.PI) / thetaSteps;
+                        const rho = (rhoIdx * 2 * rhoMax / rhoSteps) - rhoMax;
+                        lines.push({ theta, rho, votes: accumulator[thetaIdx][rhoIdx] });
+                    }
+                }
+            }
+            
+            return lines;
         }
 
-        // Main scanning function
+        // Find rectangles from lines
+        function findRectangles(lines, width, height) {
+            const rectangles = [];
+            const verticalLines = lines.filter(l => Math.abs(l.theta - Math.PI/2) < 0.5);
+            const horizontalLines = lines.filter(l => Math.abs(l.theta) < 0.5 || Math.abs(l.theta - Math.PI) < 0.5);
+            
+            // Find pairs of vertical lines
+            for (let i = 0; i < verticalLines.length; i++) {
+                for (let j = i+1; j < verticalLines.length; j++) {
+                    const line1 = verticalLines[i];
+                    const line2 = verticalLines[j];
+                    const width = Math.abs(line1.rho - line2.rho);
+                    
+                    if (width > detectionSettings.minWidth && width < detectionSettings.maxWidth) {
+                        // Find matching horizontal lines
+                        for (let k = 0; k < horizontalLines.length; k++) {
+                            for (let l = k+1; l < horizontalLines.length; l++) {
+                                const line3 = horizontalLines[k];
+                                const line4 = horizontalLines[l];
+                                const height = Math.abs(line3.rho - line4.rho);
+                                
+                                if (height > detectionSettings.minHeight && height < detectionSettings.maxHeight) {
+                                    rectangles.push({
+                                        x: Math.min(line1.rho, line2.rho),
+                                        y: Math.min(line3.rho, line4.rho),
+                                        width: width,
+                                        height: height,
+                                        score: line1.votes + line2.votes + line3.votes + line4.votes
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return rectangles;
+        }
+
+        // Main detection function
         function scanForBarcode() {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             
             // Step 1: Edge detection
-            const edgeData = applyCannyEdgeDetection(imageData);
+            const edgeData = detectEdges(imageData);
             
-            // Step 2: Find barcode frame
-            const frame = findBarcodeFrame(edgeData, canvas.width, canvas.height);
+            // Step 2: Line detection
+            const lines = findLines(edgeData, canvas.width, canvas.height);
             
-            if (frame) {
-                detectionBox = frame;
+            // Step 3: Rectangle detection
+            const rectangles = findRectangles(lines, canvas.width, canvas.height);
+            
+            if (rectangles.length > 0) {
+                // Select best rectangle (highest score)
+                rectangles.sort((a, b) => b.score - a.score);
+                detectionBox = rectangles[0];
                 updateTargetBox();
                 statusText.textContent = "Barcode frame detected";
+                
+                // Debug rectangle visualization
+                if (showDebug) {
+                    debugRectCtx.clearRect(0, 0, canvas.width, canvas.height);
+                    debugRectCtx.drawImage(canvas, 0, 0);
+                    debugRectCtx.strokeStyle = 'red';
+                    rectangles.slice(0, 3).forEach(rect => {
+                        debugRectCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+                    });
+                    debugRectCtx.strokeStyle = 'lime';
+                    debugRectCtx.lineWidth = 2;
+                    debugRectCtx.strokeRect(detectionBox.x, detectionBox.y, detectionBox.width, detectionBox.height);
+                }
             } else {
                 targetBox.style.display = 'none';
+                if (showDebug) debugRectCtx.clearRect(0, 0, canvas.width, canvas.height);
             }
         }
 
         // Update visual target box
         function updateTargetBox() {
-            const rect = video.getBoundingClientRect();
-            targetBox.style.left = (detectionBox.x / canvas.width * rect.width) + 'px';
-            targetBox.style.top = (detectionBox.y / canvas.height * rect.height) + 'px';
-            targetBox.style.width = (detectionBox.width / canvas.width * rect.width) + 'px';
-            targetBox.style.height = (detectionBox.height / canvas.height * rect.height) + 'px';
+            const videoRect = video.getBoundingClientRect();
+            const scaleX = videoRect.width / canvas.width;
+            const scaleY = videoRect.height / canvas.height;
+            
+            targetBox.style.left = (detectionBox.x * scaleX) + 'px';
+            targetBox.style.top = (detectionBox.y * scaleY) + 'px';
+            targetBox.style.width = (detectionBox.width * scaleX) + 'px';
+            targetBox.style.height = (detectionBox.height * scaleY) + 'px';
             targetBox.style.display = 'block';
         }
 
-        // Manual capture
+        // Capture the selected area
         captureButton.addEventListener('click', () => {
             if (!detectionBox) return;
             
             // Apply padding
-            const padX = detectionBox.width * detectionSettings.boxPadding;
-            const padY = detectionBox.height * detectionSettings.boxPadding;
+            const padX = detectionBox.width * detectionSettings.padding;
+            const padY = detectionBox.height * detectionSettings.padding;
             
             const cropX = Math.max(0, detectionBox.x - padX);
             const cropY = Math.max(0, detectionBox.y - padY);
             const cropWidth = Math.min(canvas.width - cropX, detectionBox.width + 2*padX);
             const cropHeight = Math.min(canvas.height - cropY, detectionBox.height + 2*padY);
             
-            // Create and draw cropped image
+            // Create cropped image
             const croppedCanvas = document.createElement('canvas');
             croppedCanvas.width = cropWidth;
             croppedCanvas.height = cropHeight;
@@ -278,12 +385,6 @@
         window.addEventListener('beforeunload', () => {
             if (stream) stream.getTracks().forEach(track => track.stop());
             if (scanInterval) clearInterval(scanInterval);
-        });
-
-        // Manual tap detection
-        video.addEventListener('click', () => {
-            if (!stream) return;
-            scanForBarcode();
         });
     </script>
 </body>
