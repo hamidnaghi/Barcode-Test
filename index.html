@@ -1,16 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Stable Barcode Frame Detector</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barcode Frame Detector with Flash</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       margin: 0;
       padding: 10px;
       touch-action: manipulation;
-      text-align: center;
     }
     #scanner-container {
       position: relative;
@@ -35,6 +34,7 @@
       pointer-events: none;
     }
     .controls {
+      text-align: center;
       margin: 15px 0;
     }
     button {
@@ -50,6 +50,7 @@
       background: #cccccc;
     }
     #results {
+      text-align: center;
       margin-top: 15px;
     }
     #croppedResult {
@@ -61,11 +62,12 @@
       margin: 10px 0;
       color: #666;
       min-height: 20px;
+      text-align: center;
     }
   </style>
 </head>
 <body>
-  <h2>Stable Barcode Frame Detector</h2>
+  <h2 style="text-align:center;">Barcode Frame Detector with Flash</h2>
   <p id="status">Ready to start</p>
   <div id="scanner-container">
     <video id="video" playsinline autoplay muted></video>
@@ -93,7 +95,6 @@
 
     const state = {
       stream: null,
-      videoTrack: null,
       detectionBox: null,
       isScanning: false,
       lastFrameTime: 0,
@@ -134,6 +135,7 @@
             height: { ideal: 720 }
           }
         });
+
         elements.video.srcObject = state.stream;
         await new Promise((resolve) => {
           elements.video.onloadeddata = resolve;
@@ -147,11 +149,12 @@
 
         elements.captureButton.disabled = false;
         elements.status.textContent = "Point at barcode";
-        state.videoTrack = state.stream.getVideoTracks()[0];
+
+        const videoTrack = state.stream.getVideoTracks()[0];
 
         // Check if torch is supported
-        if (state.videoTrack && typeof state.videoTrack.getCapabilities === 'function') {
-          const capabilities = state.videoTrack.getCapabilities();
+        if (videoTrack && typeof videoTrack.getCapabilities === 'function') {
+          const capabilities = videoTrack.getCapabilities();
           if (capabilities && capabilities.torch) {
             elements.flashButton.disabled = false;
           } else {
@@ -165,7 +168,6 @@
         elements.status.textContent = "Camera error: " + error.message;
         elements.startButton.disabled = false;
         state.stream = null;
-        state.videoTrack = null;
       }
     }
 
@@ -297,12 +299,18 @@
     }
 
     function toggleFlash() {
-      if (!state.videoTrack) return;
+      if (!state.stream) return;
+
+      const videoTrack = state.stream.getVideoTracks()[0];
+      if (!videoTrack || typeof videoTrack.getCapabilities !== 'function') {
+        elements.status.textContent = "Flash not supported on this device.";
+        return;
+      }
 
       const torch = !state.torchOn;
       const constraints = { advanced: [{ torch: torch }] };
 
-      state.videoTrack.applyConstraints(constraints)
+      videoTrack.applyConstraints(constraints)
         .then(() => {
           state.torchOn = torch;
           elements.flashButton.textContent = torch ? 'Turn Off Flash' : 'Turn On Flash';
@@ -318,7 +326,6 @@
       if (state.stream) {
         state.stream.getTracks().forEach(track => track.stop());
         state.stream = null;
-        state.videoTrack = null;
       }
       state.isScanning = false;
       elements.targetBox.style.display = 'none';
