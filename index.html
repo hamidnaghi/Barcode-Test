@@ -1,341 +1,367 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Barcode Frame Detector with Flash</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 10px;
-      touch-action: manipulation;
-    }
-    #scanner-container {
-      position: relative;
-      width: 100%;
-      max-width: 500px;
-      margin: 0 auto;
-      height: 40vh;
-      overflow: hidden;
-      border: 2px solid #333;
-      background: #000;
-    }
-    #video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    #target-box {
-      position: absolute;
-      border: 3px solid #00FF00;
-      background: rgba(0, 255, 0, 0.2);
-      display: none;
-      pointer-events: none;
-    }
-    .controls {
-      text-align: center;
-      margin: 15px 0;
-    }
-    button {
-      padding: 12px 20px;
-      margin: 0 5px;
-      background: #4285f4;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      font-size: 16px;
-    }
-    button:disabled {
-      background: #cccccc;
-    }
-    #results {
-      text-align: center;
-      margin-top: 15px;
-    }
-    #croppedResult {
-      max-width: 100%;
-      border: 2px solid #4CAF50;
-      display: none;
-    }
-    #status {
-      margin: 10px 0;
-      color: #666;
-      min-height: 20px;
-      text-align: center;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Detector with Flash</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            touch-action: manipulation;
+        }
+        #scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            height: 40vh;
+            overflow: hidden;
+            border: 2px solid #333;
+            background: #000;
+        }
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #target-box {
+            position: absolute;
+            border: 3px solid #00FF00;
+            background: rgba(0, 255, 0, 0.2);
+            display: none;
+            pointer-events: none;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 20px;
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        #flashButton {
+            background: #f4b142;
+        }
+        #flashButton.flash-on {
+            background: #f44242;
+        }
+        #results {
+            text-align: center;
+            margin-top: 15px;
+        }
+        #croppedResult {
+            max-width: 100%;
+            border: 2px solid #4CAF50;
+            display: none;
+        }
+        #status {
+            margin: 10px 0;
+            color: #666;
+            min-height: 20px;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
-  <h2 style="text-align:center;">Barcode Frame Detector with Flash</h2>
-  <p id="status">Ready to start</p>
-  <div id="scanner-container">
-    <video id="video" playsinline autoplay muted></video>
-    <div id="target-box"></div>
-  </div>
-  <div class="controls">
-    <button id="startButton">Start Camera</button>
-    <button id="captureButton" disabled>Capture Frame</button>
-    <button id="flashButton" disabled>Turn On Flash</button>
-  </div>
-  <div id="results">
-    <img id="croppedResult">
-  </div>
+    <h2 style="text-align:center;">Barcode Detector with Flash</h2>
+    <p id="status">Ready to start</p>
+    
+    <div id="scanner-container">
+        <video id="video" playsinline autoplay muted></video>
+        <div id="target-box"></div>
+    </div>
 
-  <script>
-    const elements = {
-      video: document.getElementById('video'),
-      targetBox: document.getElementById('target-box'),
-      startButton: document.getElementById('startButton'),
-      captureButton: document.getElementById('captureButton'),
-      flashButton: document.getElementById('flashButton'),
-      croppedResult: document.getElementById('croppedResult'),
-      status: document.getElementById('status')
-    };
+    <div class="controls">
+        <button id="startButton">Start Camera</button>
+        <button id="flashButton">Turn On Flash</button>
+        <button id="captureButton" disabled>Capture Frame</button>
+    </div>
+    
+    <div id="results">
+        <img id="croppedResult">
+    </div>
 
-    const state = {
-      stream: null,
-      videoTrack: null,
-      detectionBox: null,
-      isScanning: false,
-      lastFrameTime: 0,
-      torchOn: false
-    };
+    <script>
+        // Elements
+        const video = document.getElementById('video');
+        const targetBox = document.getElementById('target-box');
+        const startButton = document.getElementById('startButton');
+        const flashButton = document.getElementById('flashButton');
+        const captureButton = document.getElementById('captureButton');
+        const croppedResult = document.getElementById('croppedResult');
+        const statusText = document.getElementById('status');
 
-    const config = {
-      minWidth: 60,
-      minHeight: 20,
-      maxWidth: 400,
-      maxHeight: 150,
-      edgeThreshold: 15,
-      minEdgeDensity: 0.1,
-      frameRate: 10,
-      padding: 0.15
-    };
+        // State
+        const state = {
+            stream: null,
+            track: null,
+            scanInterval: null,
+            flashOn: false,
+            lastFrameTime: 0
+        };
 
-    function safeExecute(fn, errorMessage) {
-      try {
-        return fn();
-      } catch (error) {
-        console.error(errorMessage, error);
-        elements.status.textContent = errorMessage;
-        return null;
-      }
-    }
+        // Configuration
+        const config = {
+            minWidth: 60,
+            minHeight: 20,
+            edgeThreshold: 30,
+            frameRate: 10,
+            padding: 0.15
+        };
 
-    async function startCamera() {
-      if (state.stream) return;
-      elements.status.textContent = "Starting camera...";
-      elements.startButton.disabled = true;
-
-      try {
-        state.stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          }
-        });
-
-        elements.video.srcObject = state.stream;
-        await new Promise((resolve) => {
-          elements.video.onloadeddata = resolve;
-          elements.video.play();
-          setTimeout(() => {
-            if (elements.video.readyState < 2) {
-              throw new Error("Camera timed out");
+        // Safe execution wrapper
+        function safeExecute(fn, errorMessage) {
+            try {
+                return fn();
+            } catch (error) {
+                console.error(errorMessage, error);
+                statusText.textContent = errorMessage;
+                return null;
             }
-          }, 3000);
-        });
-
-        elements.captureButton.disabled = false;
-        elements.status.textContent = "Point at barcode";
-
-        state.videoTrack = state.stream.getVideoTracks()[0];
-
-        // Check for flash support
-        if (state.videoTrack && typeof state.videoTrack.getCapabilities === 'function') {
-          const capabilities = state.videoTrack.getCapabilities();
-          if (capabilities && capabilities.torch) {
-            elements.flashButton.disabled = false;
-          } else {
-            elements.flashButton.disabled = true;
-            elements.status.textContent = "Flash not supported on this device.";
-          }
         }
 
-        startScanning();
-      } catch (error) {
-        elements.status.textContent = "Camera error: " + error.message;
-        elements.startButton.disabled = false;
-        state.stream = null;
-      }
-    }
+        // Start camera with flash support
+        async function startCamera() {
+            if (state.stream) return;
+            
+            statusText.textContent = "Starting camera...";
+            startButton.disabled = true;
 
-    function startScanning() {
-      if (state.isScanning) return;
-      state.isScanning = true;
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-      function processFrame() {
-        const now = Date.now();
-        if (now - state.lastFrameTime < 1000 / config.frameRate) {
-          requestAnimationFrame(processFrame);
-          return;
+            try {
+                state.stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                
+                // Get video track for flash control
+                state.track = state.stream.getVideoTracks()[0];
+                video.srcObject = state.stream;
+                
+                await new Promise((resolve) => {
+                    video.onplaying = resolve;
+                    setTimeout(() => {
+                        if (video.readyState < 3) {
+                            throw new Error("Camera timed out");
+                        }
+                    }, 3000);
+                });
+                
+                flashButton.disabled = false;
+                captureButton.disabled = false;
+                statusText.textContent = "Point at barcode";
+                startScanning();
+                
+            } catch (error) {
+                statusText.textContent = "Camera error: " + error.message;
+                startButton.disabled = false;
+                cleanup();
+            }
         }
-        state.lastFrameTime = now;
 
-        if (!state.isScanning || !elements.video.videoWidth) return;
-
-        safeExecute(() => {
-          canvas.width = elements.video.videoWidth;
-          canvas.height = elements.video.videoHeight;
-          ctx.drawImage(elements.video, 0, 0, canvas.width, canvas.height);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const edges = findEdges(imageData);
-          state.detectionBox = findBarcodeArea(edges, canvas.width, canvas.height);
-
-          if (state.detectionBox) {
-            updateTargetBox();
-          } else {
-            elements.targetBox.style.display = 'none';
-          }
-
-          requestAnimationFrame(processFrame);
-        }, "Frame processing error");
-      }
-
-      processFrame();
-    }
-
-    // ✅ Corrected to detect vertical edges
-    function findEdges(imageData) {
-      const width = imageData.width;
-      const height = imageData.height;
-      const edgeData = new Uint8Array(width * height);
-
-      for (let y = 0; y < height; y++) {
-        for (let x = 1; x < width - 1; x++) {
-          const i = y * width + x;
-          const left = y * width + (x - 1);
-          const diff = Math.abs(
-            (imageData.data[i * 4] + imageData.data[i * 4 + 1] + imageData.data[i * 4 + 2]) -
-            (imageData.data[left * 4] + imageData.data[left * 4 + 1] + imageData.data[left * 4 + 2])
-          );
-          edgeData[i] = diff > config.edgeThreshold ? 255 : 0;
+        // Toggle flash
+        function toggleFlash() {
+            if (!state.track || !state.track.getCapabilities().torch) {
+                statusText.textContent = "Flash not supported on this device";
+                return;
+            }
+            
+            state.flashOn = !state.flashOn;
+            safeExecute(() => {
+                state.track.applyConstraints({
+                    advanced: [{torch: state.flashOn}]
+                });
+                flashButton.textContent = state.flashOn ? "Turn Off Flash" : "Turn On Flash";
+                flashButton.classList.toggle('flash-on', state.flashOn);
+            }, "Flash control failed");
         }
-      }
 
-      return edgeData;
-    }
-
-    function findBarcodeArea(edgeData, width, height) {
-      let left = width, right = 0, top = height, bottom = 0;
-      let edgeCount = 0;
-
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          if (edgeData[y * width + x] > 0) {
-            edgeCount++;
-            if (x < left) left = x;
-            if (x > right) right = x;
-            if (y < top) top = y;
-            if (y > bottom) bottom = y;
-          }
+        // Start scanning with frame rate control
+        function startScanning() {
+            if (state.scanInterval) return;
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            function processFrame() {
+                const now = Date.now();
+                if (now - state.lastFrameTime < 1000/config.frameRate) {
+                    requestAnimationFrame(processFrame);
+                    return;
+                }
+                state.lastFrameTime = now;
+                
+                if (!video.videoWidth) {
+                    requestAnimationFrame(processFrame);
+                    return;
+                }
+                
+                safeExecute(() => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const edges = detectEdges(imageData);
+                    const barcodeBox = findBarcode(edges, canvas.width, canvas.height);
+                    
+                    if (barcodeBox) {
+                        updateTargetBox(barcodeBox);
+                    } else {
+                        targetBox.style.display = 'none';
+                    }
+                    
+                    requestAnimationFrame(processFrame);
+                }, "Frame processing error");
+            }
+            
+            processFrame();
         }
-      }
 
-      const boxWidth = right - left;
-      const boxHeight = bottom - top;
-      const edgeDensity = edgeCount / (boxWidth * boxHeight);
+        // Simple edge detection
+        function detectEdges(imageData) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const edgeData = new Uint8Array(width * height);
+            
+            // Convert to grayscale and detect vertical edges
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const i = y * width + x;
+                    const left = (imageData.data[(i-1)*4] + imageData.data[(i-1)*4+1] + imageData.data[(i-1)*4+2]) / 3;
+                    const right = (imageData.data[(i+1)*4] + imageData.data[(i+1)*4+1] + imageData.data[(i+1)*4+2]) / 3;
+                    edgeData[i] = Math.abs(left - right) > config.edgeThreshold ? 255 : 0;
+                }
+            }
+            
+            return edgeData;
+        }
 
-      if (
-        boxWidth > config.minWidth &&
-        boxHeight > config.minHeight &&
-        boxWidth < config.maxWidth &&
-        boxHeight < config.maxHeight &&
-        edgeDensity > config.minEdgeDensity
-      ) {
-        return { x: left, y: top, width: boxWidth, height: boxHeight };
-      }
+        // Find barcode area
+        function findBarcode(edgeData, width, height) {
+            let left = width, right = 0, top = height, bottom = 0;
+            let edgeCount = 0;
+            
+            // Find edges bounding box
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    if (edgeData[y * width + x] > 0) {
+                        edgeCount++;
+                        left = Math.min(left, x);
+                        right = Math.max(right, x);
+                        top = Math.min(top, y);
+                        bottom = Math.max(bottom, y);
+                    }
+                }
+            }
+            
+            // Validate found area
+            const boxWidth = right - left;
+            const boxHeight = bottom - top;
+            
+            if (boxWidth > config.minWidth && 
+                boxHeight > config.minHeight &&
+                edgeCount > boxWidth * boxHeight * 0.1) {
+                return { x: left, y: top, width: boxWidth, height: boxHeight };
+            }
+            
+            return null;
+        }
 
-      return null;
-    }
+        // Update target box
+        function updateTargetBox(box) {
+            const videoRect = video.getBoundingClientRect();
+            const scaleX = videoRect.width / video.videoWidth;
+            const scaleY = videoRect.height / video.videoHeight;
+            
+            targetBox.style.left = (box.x * scaleX) + 'px';
+            targetBox.style.top = (box.y * scaleY) + 'px';
+            targetBox.style.width = (box.width * scaleX) + 'px';
+            targetBox.style.height = (box.height * scaleY) + 'px';
+            targetBox.style.display = 'block';
+        }
 
-    function updateTargetBox() {
-      const videoRect = elements.video.getBoundingClientRect();
-      const scaleX = videoRect.width / elements.video.videoWidth;
-      const scaleY = videoRect.height / elements.video.videoHeight;
-      elements.targetBox.style.left = (state.detectionBox.x * scaleX) + 'px';
-      elements.targetBox.style.top = (state.detectionBox.y * scaleY) + 'px';
-      elements.targetBox.style.width = (state.detectionBox.width * scaleX) + 'px';
-      elements.targetBox.style.height = (state.detectionBox.height * scaleY) + 'px';
-      elements.targetBox.style.display = 'block';
-    }
+        // Capture frame
+        function captureFrame() {
+            if (!targetBox.style.display || targetBox.style.display === 'none') {
+                statusText.textContent = "No barcode detected";
+                return;
+            }
+            
+            safeExecute(() => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Calculate crop area with padding
+                const videoRect = video.getBoundingClientRect();
+                const scaleX = video.videoWidth / videoRect.width;
+                const scaleY = video.videoHeight / videoRect.height;
+                
+                const boxX = parseFloat(targetBox.style.left) * scaleX;
+                const boxY = parseFloat(targetBox.style.top) * scaleY;
+                const boxWidth = parseFloat(targetBox.style.width) * scaleX;
+                const boxHeight = parseFloat(targetBox.style.height) * scaleY;
+                
+                const padX = boxWidth * config.padding;
+                const padY = boxHeight * config.padding;
+                
+                const cropX = Math.max(0, boxX - padX);
+                const cropY = Math.max(0, boxY - padY);
+                const cropWidth = Math.min(video.videoWidth - cropX, boxWidth + 2*padX);
+                const cropHeight = Math.min(video.videoHeight - cropY, boxHeight + 2*padY);
+                
+                canvas.width = cropWidth;
+                canvas.height = cropHeight;
+                ctx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+                
+                croppedResult.src = canvas.toDataURL('image/jpeg');
+                croppedResult.style.display = 'block';
+                statusText.textContent = "Frame captured!";
+            }, "Capture failed");
+        }
 
-    function captureFrame() {
-      if (!state.detectionBox) return;
-      safeExecute(() => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const video = elements.video;
+        // Cleanup resources
+        function cleanup() {
+            if (state.stream) {
+                state.stream.getTracks().forEach(track => track.stop());
+                state.stream = null;
+                state.track = null;
+            }
+            if (state.scanInterval) {
+                clearInterval(state.scanInterval);
+                state.scanInterval = null;
+            }
+            targetBox.style.display = 'none';
+            flashButton.disabled = true;
+            captureButton.disabled = true;
+            startButton.disabled = false;
+            flashButton.textContent = "Turn On Flash";
+            flashButton.classList.remove('flash-on');
+            state.flashOn = false;
+        }
 
-        canvas.width = state.detectionBox.width * (1 + 2 * config.padding);
-        canvas.height = state.detectionBox.height * (1 + 2 * config.padding);
-
-        const cropX = Math.max(0, state.detectionBox.x - state.detectionBox.width * config.padding);
-        const cropY = Math.max(0, state.detectionBox.y - state.detectionBox.height * config.padding);
-        const cropWidth = Math.min(video.videoWidth - cropX, canvas.width);
-        const cropHeight = Math.min(video.videoHeight - cropY, canvas.height);
-
-        ctx.drawImage(
-          video, cropX, cropY, cropWidth, cropHeight,
-          0, 0, canvas.width, canvas.height
-        );
-
-        elements.croppedResult.src = canvas.toDataURL('image/jpeg');
-        elements.croppedResult.style.display = 'block';
-        elements.status.textContent = "Frame captured!";
-      }, "Capture failed");
-    }
-
-    function toggleFlash() {
-      if (!state.videoTrack) return;
-
-      const torch = !state.torchOn;
-      const constraints = { advanced: [{ torch: torch }] };
-
-      state.videoTrack.applyConstraints(constraints)
-        .then(() => {
-          state.torchOn = torch;
-          elements.flashButton.textContent = torch ? 'Turn Off Flash' : 'Turn On Flash';
-          elements.status.textContent = torch ? 'Flash turned ON' : 'Flash turned OFF';
-        })
-        .catch(err => {
-          console.error("Failed to toggle flash:", err);
-          elements.status.textContent = "Flash error: " + err.message;
-        });
-    }
-
-    function stopCamera() {
-      if (state.stream) {
-        state.stream.getTracks().forEach(track => track.stop());
-        state.stream = null;
-        state.videoTrack = null;
-      }
-      state.isScanning = false;
-      elements.targetBox.style.display = 'none';
-      elements.startButton.disabled = false;
-      elements.captureButton.disabled = true;
-      elements.flashButton.disabled = true;
-      elements.flashButton.textContent = 'Turn On Flash';
-    }
-
-    elements.startButton.addEventListener('click', () => safeExecute(startCamera, "Start failed"));
-    elements.captureButton.addEventListener('click', () => safeExecute(captureFrame, "Capture failed"));
-    elements.flashButton.addEventListener('click', () => safeExecute(toggleFlash, "Flash toggle failed"));
-    window.addEventListener('beforeunload', () => safeExecute(stopCamera, "Cleanup failed"));
-  </script>
+        // Event listeners
+        startButton.addEventListener('click', () => safeExecute(startCamera, "Start failed"));
+        flashButton.addEventListener('click', () => safeExecute(toggleFlash, "Flash toggle failed"));
+        captureButton.addEventListener('click', () => safeExecute(captureFrame, "Capture failed"));
+        
+        window.addEventListener('beforeunload', () => safeExecute(cleanup, "Cleanup failed"));
+    </script>
 </body>
 </html>
