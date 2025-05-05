@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let lastDetectedBarcode = null;
     let isScanning = false;
     let continuousScanEnabled = false;
-    
+    const screenHeight = window.innerHeight * 0.3;
     // QuaggaJS configuration
     const quaggaConfig = {
         inputStream: {
@@ -22,8 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
             type: "LiveStream",
             target: document.querySelector('#interactive'),
             constraints: {
-                width: 900,  // Higher resolution for better detection
-                height: 40V,
+                width: 1024,  // Higher resolution for better detection
+                height: screenHeight,
                 facingMode: "environment"
             }
         },
