@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reliable Barcode Scanner</title>
-    <!-- Add html5-qrcode library -->
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js"></script>
+    <!-- Add ZXing library -->
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -94,9 +94,6 @@
             border-radius: 5px;
             display: none;
         }
-        #html5-qrcode-anchor-scan-type-change {
-            display: none !important; /* Hide the scan type switcher */
-        }
     </style>
 </head>
 <body>
@@ -107,7 +104,6 @@
     <div id="scanner-container">
         <video id="video" playsinline autoplay muted></video>
         <div id="alignment-line"></div>
-        <div id="qr-reader" style="width: 100%; display: none;"></div>
     </div>
 
     <div class="controls">
@@ -132,7 +128,6 @@
         const decodedResult = document.getElementById('decodedResult');
         const statusText = document.getElementById('status');
         const cameraError = document.getElementById('camera-error');
-        const qrReaderElement = document.getElementById('qr-reader');
 
         // State
         const state = {
@@ -141,8 +136,7 @@
             flashOn: false,
             isScanning: false,
             scanCanvas: document.createElement('canvas'),
-            scanContext: null,
-            html5QrCode: null
+            scanContext: null
         };
         state.scanContext = state.scanCanvas.getContext('2d', { willReadFrequently: true });
 
@@ -153,9 +147,6 @@
             startButton.disabled = true;
 
             try {
-                // Initialize html5-qrcode
-                state.html5QrCode = new Html5Qrcode("qr-reader");
-                
                 // Try different camera constraints with fallbacks
                 const constraintsAttempts = [
                     { // Ideal constraints
@@ -325,7 +316,7 @@
                 croppedResult.src = croppedCanvas.toDataURL('image/jpeg');
                 croppedResult.style.display = 'block';
                 
-                // Decode barcode using html5-qrcode
+                // Decode barcode using ZXing
                 const decodedText = await decodeBarcode(croppedCanvas);
                 
                 if (decodedText) {
@@ -386,30 +377,16 @@
             return { left: leftEdge, right: rightEdge };
         }
 
-        // Barcode decoding with html5-qrcode
+        // Real barcode decoding with ZXing
         async function decodeBarcode(canvas) {
-            return new Promise((resolve) => {
-                // Convert canvas to image data
-                const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-                
-                // Use html5-qrcode to decode
-                state.html5QrCode._decodeFromImage(
-                    imageData,
-                    canvas.width,
-                    canvas.height,
-                    (decodedText) => {
-                        if (decodedText) {
-                            resolve(decodedText);
-                        } else {
-                            resolve(null);
-                        }
-                    },
-                    (error) => {
-                        console.log("Decoding error:", error);
-                        resolve(null);
-                    }
-                );
-            });
+            try {
+                const codeReader = new ZXing.BrowserMultiFormatReader();
+                const result = await codeReader.decodeFromCanvas(canvas);
+                return result.text;
+            } catch (error) {
+                console.error("Barcode decoding error:", error);
+                throw new Error("Could not decode barcode");
+            }
         }
 
         // Handle camera errors
@@ -432,10 +409,6 @@
 
         // Cleanup resources
         function cleanup() {
-            if (state.html5QrCode && state.html5QrCode.isScanning) {
-                state.html5QrCode.stop();
-            }
-            
             if (state.stream) {
                 state.stream.getTracks().forEach(track => {
                     // Turn off flash before stopping
