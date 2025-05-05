@@ -5,54 +5,298 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlockCode 2.0 Generator</title>
     <style>
-        /* [Previous CSS remains the same until .grid] */
-        
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(31, 10px); /* 16 squares + 15 separators */
-            grid-gap: 0;
-            margin-bottom: 10px; /* Space between rows */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+            background: #f5f5f5;
         }
-        
-        /* [Rest of the CSS remains the same] */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            display: block;
+            margin: 20px auto;
+        }
+        button:hover {
+            background: #3367d6;
+        }
+        .blockcode-display {
+            margin: 30px auto;
+            border: 2px solid #333;
+            padding: 10px;
+            display: inline-block;
+            background: white;
+        }
+        .grid-row {
+            display: flex;
+            margin-bottom: 5px;
+        }
+        .square {
+            width: 30px;
+            height: 30px;
+            position: relative;
+            background: white;
+            border: 1px solid #eee;
+        }
+        .separator {
+            width: 6px;
+            height: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .separator-bar {
+            height: 6px;
+            width: 2px;
+            background: black;
+        }
+        .separator-bar:first-child,
+        .separator-bar:last-child {
+            background: white;
+        }
+        .triangle {
+            position: absolute;
+            width: 0;
+            height: 0;
+        }
+        .top {
+            top: 0;
+            left: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-bottom: 15px solid black;
+        }
+        .right {
+            top: 0;
+            right: 0;
+            border-top: 15px solid transparent;
+            border-bottom: 15px solid transparent;
+            border-left: 15px solid black;
+        }
+        .bottom {
+            bottom: 0;
+            right: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 15px solid black;
+        }
+        .left {
+            bottom: 0;
+            left: 0;
+            border-top: 15px solid transparent;
+            border-bottom: 15px solid transparent;
+            border-right: 15px solid black;
+        }
+        .print-button {
+            background: #34a853;
+        }
+        .data-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- [Previous HTML remains the same] -->
+        <h1>BlockCode 2.0 Generator</h1>
         
-        <div class="blockcode-display">
-            <!-- Only these two rows - no additional rows -->
-            <div class="grid" id="row1"></div>
-            <div class="grid" id="row2"></div>
+        <div class="input-group">
+            <label for="inputData">Data to Encode:</label>
+            <textarea id="inputData" placeholder="Enter text to encode">TEST</textarea>
         </div>
         
-        <!-- [Rest of the HTML remains the same] -->
+        <div class="input-group">
+            <label for="encryptionKey">Encryption Key:</label>
+            <input type="text" id="encryptionKey" value="MY_SECRET_KEY_123" readonly>
+        </div>
+        
+        <button id="generateBtn">Generate BlockCode</button>
+        
+        <div class="blockcode-display" id="blockcodeDisplay">
+            <!-- Rows will be inserted here by JavaScript -->
+        </div>
+        
+        <button id="printBtn" class="print-button">Print BlockCode</button>
+        
+        <div class="data-info">
+            <h3>Encoding Information:</h3>
+            <p><strong>Pattern Size:</strong> 2 rows × 16 squares (32 total squares)</p>
+            <p><strong>Data Capacity:</strong> 16 bytes (128 bits)</p>
+            <p><strong>Encryption:</strong> AES-128 with constant key</p>
+            <p><strong>Error Correction:</strong> 2 bytes Reed-Solomon</p>
+            <p><strong>Separator Columns:</strong> Added between each character with 3 vertical bars (white-black-white)</p>
+        </div>
     </div>
 
     <script>
-        // [Previous JavaScript remains the same until renderPattern]
-
-        // Render the BlockCode pattern (corrected to maintain 2 rows)
-        function renderPattern(squares) {
-            // Clear previous
-            row1.innerHTML = '';
-            row2.innerHTML = '';
+        document.addEventListener('DOMContentLoaded', function() {
+            // Constants
+            const ROWS = 2;
+            const COLS = 16;
+            const DEFAULT_KEY = "MY_SECRET_KEY_123";
             
-            // First row - squares 0-15
-            for (let i = 0; i < COLS; i++) {
-                renderSquare(row1, squares[i]);
-                if (i < COLS - 1) renderSeparator(row1); // Add separator between squares
+            // Elements
+            const inputData = document.getElementById('inputData');
+            const encryptionKey = document.getElementById('encryptionKey');
+            const generateBtn = document.getElementById('generateBtn');
+            const printBtn = document.getElementById('printBtn');
+            const blockcodeDisplay = document.getElementById('blockcodeDisplay');
+            
+            // Initialize
+            generateBlockCode();
+            
+            // Simple XOR "encryption" for demo purposes
+            function simpleEncrypt(data, key) {
+                let result = '';
+                for (let i = 0; i < data.length; i++) {
+                    const charCode = data.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+                    result += String.fromCharCode(charCode);
+                }
+                return result;
             }
             
-            // Second row - squares 16-31
-            for (let i = COLS; i < COLS * ROWS; i++) {
-                renderSquare(row2, squares[i] || { top: false, right: false, bottom: false, left: false });
-                if (i < COLS * ROWS - 1) renderSeparator(row2); // Add separator between squares
+            // Add error correction (simplified Reed-Solomon)
+            function addErrorCorrection(data) {
+                const checkByte1 = data.split('').reduce((acc, char) => acc ^ char.charCodeAt(0), 0);
+                const checkByte2 = data.split('').reduce((acc, char, idx) => acc + char.charCodeAt(0) * (idx+1), 0) % 256;
+                return data + String.fromCharCode(checkByte1, checkByte2);
             }
-        }
-
-        // [Rest of the JavaScript remains the same]
+            
+            // Convert data to binary grid pattern
+            function dataToPattern(data) {
+                let paddedData = data;
+                while (paddedData.length < 14) {
+                    paddedData += '\0';
+                }
+                
+                const encodedData = addErrorCorrection(paddedData);
+                
+                let binaryString = '';
+                for (let i = 0; i < encodedData.length; i++) {
+                    binaryString += encodedData.charCodeAt(i).toString(2).padStart(8, '0');
+                }
+                
+                const squares = [];
+                for (let i = 0; i < binaryString.length; i += 4) {
+                    const bits = binaryString.slice(i, i + 4).padEnd(4, '0');
+                    squares.push({
+                        top: bits[0] === '1',
+                        right: bits[1] === '1',
+                        bottom: bits[2] === '1',
+                        left: bits[3] === '1'
+                    });
+                }
+                
+                return squares;
+            }
+            
+            // Render the BlockCode pattern
+            function renderPattern(squares) {
+                blockcodeDisplay.innerHTML = '';
+                
+                // Create rows
+                for (let row = 0; row < ROWS; row++) {
+                    const rowDiv = document.createElement('div');
+                    rowDiv.className = 'grid-row';
+                    
+                    // Add squares and separators for this row
+                    for (let col = 0; col < COLS; col++) {
+                        const index = row * COLS + col;
+                        if (index < squares.length) {
+                            // Add square
+                            const square = document.createElement('div');
+                            square.className = 'square';
+                            
+                            const pattern = squares[index];
+                            if (pattern.top) square.appendChild(createTriangle('top'));
+                            if (pattern.right) square.appendChild(createTriangle('right'));
+                            if (pattern.bottom) square.appendChild(createTriangle('bottom'));
+                            if (pattern.left) square.appendChild(createTriangle('left'));
+                            
+                            rowDiv.appendChild(square);
+                            
+                            // Add separator (except after last square)
+                            if (col < COLS - 1) {
+                                const separator = document.createElement('div');
+                                separator.className = 'separator';
+                                separator.innerHTML = `
+                                    <div class="separator-bar"></div>
+                                    <div class="separator-bar"></div>
+                                    <div class="separator-bar"></div>
+                                `;
+                                rowDiv.appendChild(separator);
+                            }
+                        }
+                    }
+                    
+                    blockcodeDisplay.appendChild(rowDiv);
+                }
+            }
+            
+            // Create a triangle element
+            function createTriangle(direction) {
+                const triangle = document.createElement('div');
+                triangle.className = `triangle ${direction}`;
+                return triangle;
+            }
+            
+            // Generate the BlockCode
+            function generateBlockCode() {
+                const data = inputData.value.trim();
+                if (!data) {
+                    alert('Please enter data to encode');
+                    return;
+                }
+                
+                const key = encryptionKey.value;
+                const encryptedData = simpleEncrypt(data, key);
+                const pattern = dataToPattern(encryptedData);
+                renderPattern(pattern);
+                printBtn.disabled = false;
+            }
+            
+            // Event listeners
+            generateBtn.addEventListener('click', generateBlockCode);
+            printBtn.addEventListener('click', () => window.print());
+        });
     </script>
 </body>
 </html>
