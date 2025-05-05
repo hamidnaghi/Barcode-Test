@@ -1,352 +1,460 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Barcode Frame Detector</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 10px;
-      touch-action: manipulation;
-    }
-    #scanner-container {
-      position: relative;
-      width: 100%;
-      max-width: 500px;
-      margin: 0 auto;
-      height: 40vh;
-      overflow: hidden;
-      border: 2px solid #333;
-      background: #000;
-    }
-    #video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    #target-box {
-      position: absolute;
-      border: 3px solid #00FF00;
-      background: rgba(0, 255, 0, 0.2);
-      display: none;
-      pointer-events: none;
-    }
-    #alignment-line {
-      position: absolute;
-      left: 0;
-      width: 100%;
-      height: 2px;
-      background: #00FF00;
-      cursor: ns-resize;
-      z-index: 10;
-    }
-    .controls {
-      text-align: center;
-      margin: 15px 0;
-    }
-    button {
-      padding: 12px 20px;
-      margin: 0 5px;
-      background: #4285f4;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      font-size: 16px;
-    }
-    button:disabled {
-      background: #cccccc;
-    }
-    #results {
-      text-align: center;
-      margin-top: 15px;
-    }
-    #croppedResult {
-      max-width: 100%;
-      border: 2px solid #4CAF50;
-      display: none;
-    }
-    #status {
-      margin: 10px 0;
-      color: #666;
-      min-height: 20px;
-      text-align: center;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Scanner with Alignment Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            touch-action: manipulation;
+        }
+        #scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            height: 40vh;
+            overflow: hidden;
+            border: 2px solid #333;
+            background: #000;
+        }
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #target-box {
+            position: absolute;
+            border: 3px solid #00FF00;
+            background: rgba(0, 255, 0, 0.2);
+            display: none;
+            pointer-events: none;
+        }
+        #alignment-line {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: #00FF00;
+            pointer-events: none;
+            display: none;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 20px;
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        #flashButton {
+            background: #f4b142;
+        }
+        #flashButton.flash-on {
+            background: #f44242;
+        }
+        #results {
+            text-align: center;
+            margin-top: 15px;
+        }
+        #croppedResult {
+            max-width: 100%;
+            border: 2px solid #4CAF50;
+            display: none;
+        }
+        #status {
+            margin: 10px 0;
+            color: #666;
+            min-height: 20px;
+            text-align: center;
+        }
+        #decodedResult {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 5px;
+            display: none;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0,0,0,.3);
+            border-radius: 50%;
+            border-top-color: #4285f4;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
-  <h2 style="text-align:center;">Barcode Frame Detector</h2>
-  <p id="status">Ready to start</p>
-  <div id="scanner-container">
-    <video id="video" playsinline autoplay muted></video>
-    <div id="target-box"></div>
-    <div id="alignment-line"></div>
-  </div>
-  <div class="controls">
-    <button id="startButton">Start Camera</button>
-    <button id="captureButton" disabled>Capture Frame</button>
-  </div>
-  <div id="results">
-    <img id="croppedResult">
-  </div>
+    <h2 style="text-align:center;">Barcode Scanner with Alignment Guide</h2>
+    <p id="status">Ready to start</p>
+    
+    <div id="scanner-container">
+        <video id="video" playsinline autoplay muted></video>
+        <div id="alignment-line"></div>
+        <div id="target-box"></div>
+    </div>
 
-  <script>
-    const elements = {
-      video: document.getElementById('video'),
-      targetBox: document.getElementById('target-box'),
-      alignmentLine: document.getElementById('alignment-line'),
-      startButton: document.getElementById('startButton'),
-      captureButton: document.getElementById('captureButton'),
-      croppedResult: document.getElementById('croppedResult'),
-      status: document.getElementById('status')
-    };
+    <div class="controls">
+        <button id="startButton">Start Camera</button>
+        <button id="flashButton" disabled>Turn On Flash</button>
+        <button id="captureButton" disabled>Capture & Decode</button>
+    </div>
+    
+    <div id="results">
+        <img id="croppedResult">
+        <div id="decodedResult"></div>
+    </div>
 
-    const state = {
-      stream: null,
-      detectionBox: null,
-      scanInterval: null,
-      isScanning: false,
-      lastFrameTime: 0,
-      alignmentY: 0.5 // Initial position (center)
-    };
+    <!-- Include ZXing library for barcode decoding -->
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest"></script>
 
-    const config = {
-      minWidth: 60,
-      minHeight: 20,
-      maxWidth: 400,
-      maxHeight: 150,
-      edgeThreshold: 15,
-      scanRange: 0.2, // Scan 20% above/below alignment line
-      minEdgeDensity: 0.1,
-      frameRate: 10,
-      padding: 0.15
-    };
+    <script>
+        // Elements
+        const video = document.getElementById('video');
+        const targetBox = document.getElementById('target-box');
+        const alignmentLine = document.getElementById('alignment-line');
+        const startButton = document.getElementById('startButton');
+        const flashButton = document.getElementById('flashButton');
+        const captureButton = document.getElementById('captureButton');
+        const croppedResult = document.getElementById('croppedResult');
+        const decodedResult = document.getElementById('decodedResult');
+        const statusText = document.getElementById('status');
 
-    function safeExecute(fn, errorMessage) {
-      try {
-        return fn();
-      } catch (error) {
-        console.error(errorMessage, error);
-        elements.status.textContent = errorMessage;
-        return null;
-      }
-    }
+        // State
+        const state = {
+            stream: null,
+            track: null,
+            scanInterval: null,
+            flashOn: false,
+            lastFrameTime: 0,
+            codeReader: new ZXing.BrowserMultiFormatReader(),
+            alignmentLinePosition: 0.5 // Center position (0-1)
+        };
 
-    async function startCamera() {
-      if (state.stream) return;
-      elements.status.textContent = "Starting camera...";
-      elements.startButton.disabled = true;
+        // Configuration
+        const config = {
+            minWidth: 60,
+            minHeight: 20,
+            edgeThreshold: 30,
+            frameRate: 10,
+            padding: 0.15
+        };
 
-      try {
-        state.stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          } 
-        });
+        // Initialize alignment line
+        function initAlignmentLine() {
+            // Set initial position (center)
+            updateAlignmentLinePosition();
+            alignmentLine.style.display = 'block';
+        }
 
-        elements.video.srcObject = state.stream;
-        await new Promise((resolve) => {
-          elements.video.onloadeddata = resolve;
-          elements.video.play();
-          setTimeout(() => {
-            if (elements.video.readyState < 2) {
-              throw new Error("Camera timed out");
+        // Update alignment line position
+        function updateAlignmentLinePosition() {
+            const container = document.getElementById('scanner-container');
+            const pos = container.offsetHeight * state.alignmentLinePosition;
+            alignmentLine.style.top = `${pos}px`;
+        }
+
+        // Safe execution wrapper
+        function safeExecute(fn, errorMessage) {
+            try {
+                return fn();
+            } catch (error) {
+                console.error(errorMessage, error);
+                statusText.textContent = errorMessage;
+                return null;
             }
-          }, 3000);
+        }
+
+        // Start camera with flash support
+        async function startCamera() {
+            if (state.stream) return;
+            
+            statusText.textContent = "Starting camera...";
+            startButton.disabled = true;
+
+            try {
+                state.stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                
+                // Get video track for flash control
+                state.track = state.stream.getVideoTracks()[0];
+                video.srcObject = state.stream;
+                
+                await new Promise((resolve) => {
+                    video.onplaying = resolve;
+                    setTimeout(() => {
+                        if (video.readyState < 3) {
+                            throw new Error("Camera timed out");
+                        }
+                    }, 3000);
+                });
+                
+                flashButton.disabled = false;
+                captureButton.disabled = false;
+                statusText.textContent = "Align barcode with green line";
+                initAlignmentLine();
+                startScanning();
+                
+            } catch (error) {
+                statusText.textContent = "Camera error: " + error.message;
+                startButton.disabled = false;
+                cleanup();
+            }
+        }
+
+        // Toggle flash
+        function toggleFlash() {
+            if (!state.track || !state.track.getCapabilities().torch) {
+                statusText.textContent = "Flash not supported on this device";
+                return;
+            }
+            
+            state.flashOn = !state.flashOn;
+            safeExecute(() => {
+                state.track.applyConstraints({
+                    advanced: [{torch: state.flashOn}]
+                });
+                flashButton.textContent = state.flashOn ? "Turn Off Flash" : "Turn On Flash";
+                flashButton.classList.toggle('flash-on', state.flashOn);
+            }, "Flash control failed");
+        }
+
+        // Start scanning with frame rate control
+        function startScanning() {
+            if (state.scanInterval) return;
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            function processFrame() {
+                const now = Date.now();
+                if (now - state.lastFrameTime < 1000/config.frameRate) {
+                    requestAnimationFrame(processFrame);
+                    return;
+                }
+                state.lastFrameTime = now;
+                
+                if (!video.videoWidth) {
+                    requestAnimationFrame(processFrame);
+                    return;
+                }
+                
+                safeExecute(() => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const edges = detectEdges(imageData);
+                    const barcodeBox = findBarcode(edges, canvas.width, canvas.height);
+                    
+                    if (barcodeBox) {
+                        updateTargetBox(barcodeBox);
+                    } else {
+                        targetBox.style.display = 'none';
+                    }
+                    
+                    requestAnimationFrame(processFrame);
+                }, "Frame processing error");
+            }
+            
+            processFrame();
+        }
+
+        // Simple edge detection
+        function detectEdges(imageData) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const edgeData = new Uint8Array(width * height);
+            
+            // Convert to grayscale and detect vertical edges
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const i = y * width + x;
+                    const left = (imageData.data[(i-1)*4] + imageData.data[(i-1)*4+1] + imageData.data[(i-1)*4+2]) / 3;
+                    const right = (imageData.data[(i+1)*4] + imageData.data[(i+1)*4+1] + imageData.data[(i+1)*4+2]) / 3;
+                    edgeData[i] = Math.abs(left - right) > config.edgeThreshold ? 255 : 0;
+                }
+            }
+            
+            return edgeData;
+        }
+
+        // Find barcode area - now considers alignment line position
+        function findBarcode(edgeData, width, height) {
+            let left = width, right = 0, top = height, bottom = 0;
+            let edgeCount = 0;
+            
+            // Calculate scan area around alignment line
+            const alignY = Math.floor(height * state.alignmentLinePosition);
+            const scanStart = Math.max(0, alignY - 50); // Scan 50px above and below alignment line
+            const scanEnd = Math.min(height, alignY + 50);
+            
+            // Find edges bounding box within scan area
+            for (let y = scanStart; y < scanEnd; y++) {
+                for (let x = 0; x < width; x++) {
+                    if (edgeData[y * width + x] > 0) {
+                        edgeCount++;
+                        left = Math.min(left, x);
+                        right = Math.max(right, x);
+                        top = Math.min(top, y);
+                        bottom = Math.max(bottom, y);
+                    }
+                }
+            }
+            
+            // Validate found area
+            const boxWidth = right - left;
+            const boxHeight = bottom - top;
+            
+            if (boxWidth > config.minWidth && 
+                boxHeight > config.minHeight &&
+                edgeCount > boxWidth * boxHeight * 0.1) {
+                return { x: left, y: top, width: boxWidth, height: boxHeight };
+            }
+            
+            return null;
+        }
+
+        // Update target box
+        function updateTargetBox(box) {
+            const videoRect = video.getBoundingClientRect();
+            const scaleX = videoRect.width / video.videoWidth;
+            const scaleY = videoRect.height / video.videoHeight;
+            
+            targetBox.style.left = (box.x * scaleX) + 'px';
+            targetBox.style.top = (box.y * scaleY) + 'px';
+            targetBox.style.width = (box.width * scaleX) + 'px';
+            targetBox.style.height = (box.height * scaleY) + 'px';
+            targetBox.style.display = 'block';
+        }
+
+        // Decode barcode from image
+        async function decodeBarcode(imageData) {
+            try {
+                statusText.innerHTML = "Decoding barcode <span class='loading'></span>";
+                
+                // Convert to grayscale for ZXing
+                const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(imageData);
+                const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
+                
+                const result = await state.codeReader.decode(binaryBitmap);
+                return result.text;
+            } catch (error) {
+                console.log("Decoding error:", error);
+                return null;
+            }
+        }
+
+        // Capture frame and decode
+        async function captureAndDecode() {
+            if (!targetBox.style.display || targetBox.style.display === 'none') {
+                statusText.textContent = "No barcode detected";
+                return;
+            }
+            
+            safeExecute(async () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Calculate crop area with padding
+                const videoRect = video.getBoundingClientRect();
+                const scaleX = video.videoWidth / videoRect.width;
+                const scaleY = video.videoHeight / videoRect.height;
+                
+                const boxX = parseFloat(targetBox.style.left) * scaleX;
+                const boxY = parseFloat(targetBox.style.top) * scaleY;
+                const boxWidth = parseFloat(targetBox.style.width) * scaleX;
+                const boxHeight = parseFloat(targetBox.style.height) * scaleY;
+                
+                const padX = boxWidth * config.padding;
+                const padY = boxHeight * config.padding;
+                
+                const cropX = Math.max(0, boxX - padX);
+                const cropY = Math.max(0, boxY - padY);
+                const cropWidth = Math.min(video.videoWidth - cropX, boxWidth + 2*padX);
+                const cropHeight = Math.min(video.videoHeight - cropY, boxHeight + 2*padY);
+                
+                canvas.width = cropWidth;
+                canvas.height = cropHeight;
+                ctx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+                
+                // Show captured image
+                croppedResult.src = canvas.toDataURL('image/jpeg');
+                croppedResult.style.display = 'block';
+                
+                // Decode the barcode
+                const decodedText = await decodeBarcode(canvas);
+                
+                if (decodedText) {
+                    decodedResult.textContent = `Decoded: ${decodedText}`;
+                    decodedResult.style.display = 'block';
+                    statusText.textContent = "Decoding successful!";
+                } else {
+                    decodedResult.textContent = "Could not decode barcode";
+                    decodedResult.style.display = 'block';
+                    statusText.textContent = "Decoding failed - try again";
+                }
+            }, "Capture failed");
+        }
+
+        // Cleanup resources
+        function cleanup() {
+            if (state.stream) {
+                state.stream.getTracks().forEach(track => track.stop());
+                state.stream = null;
+                state.track = null;
+            }
+            if (state.scanInterval) {
+                clearInterval(state.scanInterval);
+                state.scanInterval = null;
+            }
+            targetBox.style.display = 'none';
+            alignmentLine.style.display = 'none';
+            flashButton.disabled = true;
+            captureButton.disabled = true;
+            startButton.disabled = false;
+            flashButton.textContent = "Turn On Flash";
+            flashButton.classList.remove('flash-on');
+            state.flashOn = false;
+        }
+
+        // Event listeners
+        startButton.addEventListener('click', () => safeExecute(startCamera, "Start failed"));
+        flashButton.addEventListener('click', () => safeExecute(toggleFlash, "Flash toggle failed"));
+        captureButton.addEventListener('click', () => safeExecute(captureAndDecode, "Capture failed"));
+        
+        window.addEventListener('beforeunload', () => safeExecute(cleanup, "Cleanup failed"));
+        window.addEventListener('resize', () => {
+            if (alignmentLine.style.display !== 'none') {
+                updateAlignmentLinePosition();
+            }
         });
-
-        elements.captureButton.disabled = false;
-        elements.status.textContent = "Align the green line with the barcode";
-        setupAlignmentLine();
-        startScanning();
-      } catch (error) {
-        elements.status.textContent = "Camera error: " + error.message;
-        elements.startButton.disabled = false;
-        state.stream = null;
-      }
-    }
-
-    function setupAlignmentLine() {
-      elements.alignmentLine.style.top = `${state.alignmentY * 100}%`;
-      elements.alignmentLine.addEventListener('mousedown', handleDragStart);
-      elements.alignmentLine.addEventListener('touchstart', handleDragStart);
-    }
-
-    let isDragging = false;
-    function handleDragStart(e) {
-      e.preventDefault();
-      isDragging = true;
-      window.addEventListener('mousemove', handleDrag);
-      window.addEventListener('touchmove', handleDrag);
-      window.addEventListener('mouseup', handleDragEnd);
-      window.addEventListener('touchend', handleDragEnd);
-    }
-
-    function handleDrag(e) {
-      if (!isDragging) return;
-      const rect = elements.video.getBoundingClientRect();
-      const y = e.touches ? e.touches[0].clientY : e.clientY;
-      const relativeY = (y - rect.top) / rect.height;
-      state.alignmentY = Math.max(0, Math.min(1, relativeY));
-      elements.alignmentLine.style.top = `${state.alignmentY * 100}%`;
-    }
-
-    function handleDragEnd() {
-      isDragging = false;
-      window.removeEventListener('mousemove', handleDrag);
-      window.removeEventListener('touchmove', handleDrag);
-      window.removeEventListener('mouseup', handleDragEnd);
-      window.removeEventListener('touchend', handleDragEnd);
-    }
-
-    function startScanning() {
-      if (state.isScanning) return;
-      state.isScanning = true;
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-      function processFrame() {
-        const now = Date.now();
-        if (now - state.lastFrameTime < 1000/config.frameRate) {
-          requestAnimationFrame(processFrame);
-          return;
-        }
-        state.lastFrameTime = now;
-
-        if (!state.isScanning || !elements.video.videoWidth) return;
-
-        safeExecute(() => {
-          canvas.width = elements.video.videoWidth;
-          canvas.height = elements.video.videoHeight;
-          ctx.drawImage(elements.video, 0, 0, canvas.width, canvas.height);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const edges = findEdges(imageData);
-          state.detectionBox = findBarcodeArea(edges, canvas.width, canvas.height);
-
-          if (state.detectionBox) {
-            updateTargetBox();
-          } else {
-            elements.targetBox.style.display = 'none';
-          }
-
-          requestAnimationFrame(processFrame);
-        }, "Frame processing error");
-      }
-
-      processFrame();
-    }
-
-    function findEdges(imageData) {
-      const width = imageData.width;
-      const height = imageData.height;
-      const edgeData = new Uint8Array(width * height);
-
-      // Focus on scan range around alignment line
-      const minY = Math.floor(state.alignmentY * height - config.scanRange * height);
-      const maxY = Math.floor(state.alignmentY * height + config.scanRange * height);
-
-      for (let y = minY; y <= maxY && y < height; y++) {
-        for (let x = 1; x < width - 1; x++) {
-          const i = y * width + x;
-          const left = y * width + (x - 1);
-          const diff = Math.abs(
-            (imageData.data[i * 4] + imageData.data[i * 4 + 1] + imageData.data[i * 4 + 2]) -
-            (imageData.data[left * 4] + imageData.data[left * 4 + 1] + imageData.data[left * 4 + 2])
-          );
-          edgeData[i] = diff > config.edgeThreshold ? 255 : 0;
-        }
-      }
-
-      return edgeData;
-    }
-
-    function findBarcodeArea(edgeData, width, height) {
-      let left = width, right = 0, top = height, bottom = 0;
-      let edgeCount = 0;
-
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          if (edgeData[y * width + x] > 0) {
-            edgeCount++;
-            if (x < left) left = x;
-            if (x > right) right = x;
-            if (y < top) top = y;
-            if (y > bottom) bottom = y;
-          }
-        }
-      }
-
-      const boxWidth = right - left;
-      const boxHeight = bottom - top;
-      const edgeDensity = edgeCount / (boxWidth * boxHeight);
-
-      if (
-        boxWidth > config.minWidth &&
-        boxHeight > config.minHeight &&
-        boxWidth < config.maxWidth &&
-        boxHeight < config.maxHeight &&
-        edgeDensity > config.minEdgeDensity
-      ) {
-        return { x: left, y: top, width: boxWidth, height: boxHeight };
-      }
-
-      return null;
-    }
-
-    function updateTargetBox() {
-      const videoRect = elements.video.getBoundingClientRect();
-      const scaleX = videoRect.width / elements.video.videoWidth;
-      const scaleY = videoRect.height / elements.video.videoHeight;
-      elements.targetBox.style.left = (state.detectionBox.x * scaleX) + 'px';
-      elements.targetBox.style.top = (state.detectionBox.y * scaleY) + 'px';
-      elements.targetBox.style.width = (state.detectionBox.width * scaleX) + 'px';
-      elements.targetBox.style.height = (state.detectionBox.height * scaleY) + 'px';
-      elements.targetBox.style.display = 'block';
-    }
-
-    function captureFrame() {
-      if (!state.detectionBox) return;
-      safeExecute(() => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const video = elements.video;
-
-        canvas.width = state.detectionBox.width * (1 + 2 * config.padding);
-        canvas.height = state.detectionBox.height * (1 + 2 * config.padding);
-
-        const cropX = Math.max(0, state.detectionBox.x - state.detectionBox.width * config.padding);
-        const cropY = Math.max(0, state.detectionBox.y - state.detectionBox.height * config.padding);
-        const cropWidth = Math.min(video.videoWidth - cropX, canvas.width);
-        const cropHeight = Math.min(video.videoHeight - cropY, canvas.height);
-
-        ctx.drawImage(
-          video, cropX, cropY, cropWidth, cropHeight,
-          0, 0, canvas.width, canvas.height
-        );
-
-        elements.croppedResult.src = canvas.toDataURL('image/jpeg');
-        elements.croppedResult.style.display = 'block';
-        elements.status.textContent = "Frame captured!";
-      }, "Capture failed");
-    }
-
-    function stopCamera() {
-      if (state.stream) {
-        state.stream.getTracks().forEach(track => track.stop());
-        state.stream = null;
-      }
-      state.isScanning = false;
-      elements.targetBox.style.display = 'none';
-      elements.startButton.disabled = false;
-      elements.captureButton.disabled = true;
-    }
-
-    elements.startButton.addEventListener('click', () => safeExecute(startCamera, "Start failed"));
-    elements.captureButton.addEventListener('click', () => safeExecute(captureFrame, "Capture failed"));
-    window.addEventListener('beforeunload', () => safeExecute(stopCamera, "Cleanup failed"));
-  </script>
+    </script>
 </body>
 </html>
