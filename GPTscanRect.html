@@ -23,11 +23,22 @@
 </div>
 
 <!-- OpenCV.js -->
-<script async src="https://docs.opencv.org/4.x/opencv.js" onload="cv['onRuntimeInitialized']=onOpenCvReady;"></script>
+<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 
 <script>
+let openCvReady = false;
+
+// Timeout fallback in case OpenCV fails
+setTimeout(() => {
+  if (!openCvReady) {
+    document.getElementById("status").textContent = "❌ Failed to load OpenCV.";
+  }
+}, 10000); // 10 seconds timeout
+
+// Called when OpenCV has initialized
 function onOpenCvReady() {
-  document.getElementById("status").textContent = "OpenCV is ready. Please upload an image.";
+  openCvReady = true;
+  document.getElementById("status").textContent = "✅ OpenCV ready. Please upload an image.";
 
   document.getElementById("imageInput").addEventListener("change", (e) => {
     const file = e.target.files[0];
@@ -45,6 +56,9 @@ function onOpenCvReady() {
     img.src = URL.createObjectURL(file);
   });
 }
+
+// Attach OpenCV init function
+cv['onRuntimeInitialized'] = onOpenCvReady;
 
 function detectRectangle(canvas) {
   const src = cv.imread(canvas);
@@ -71,6 +85,7 @@ function detectRectangle(canvas) {
       const area = cv.contourArea(approx);
       if (area > largestArea) {
         largestArea = area;
+        if (largestRect) largestRect.delete();
         largestRect = approx;
       } else {
         approx.delete();
@@ -86,13 +101,13 @@ function detectRectangle(canvas) {
       points.push({ x: largestRect.data32S[i * 2], y: largestRect.data32S[i * 2 + 1] });
     }
 
-    // Sort points in order: top-left, top-right, bottom-right, bottom-left
+    // Sort: top-left, top-right, bottom-right, bottom-left
     points.sort((a, b) => a.y - b.y);
     const top = points.slice(0, 2).sort((a, b) => a.x - b.x);
     const bottom = points.slice(2).sort((a, b) => a.x - b.x);
     const ordered = [top[0], top[1], bottom[1], bottom[0]];
-
     const [tl, tr, br, bl] = ordered;
+
     const width = Math.max(
       Math.hypot(tr.x - tl.x, tr.y - tl.y),
       Math.hypot(br.x - bl.x, br.y - bl.y)
@@ -123,12 +138,11 @@ function detectRectangle(canvas) {
 
     dst.delete(); srcTri.delete(); dstTri.delete(); M.delete(); largestRect.delete();
   } else {
-    alert("No rectangle found.");
+    alert("No rectangle detected.");
   }
 
   src.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete();
 }
 </script>
-
 </body>
 </html>
