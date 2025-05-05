@@ -2,115 +2,303 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Tap to Crop Barcode-like Region</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barcode Frame Detector</title>
   <style>
-    body { font-family: sans-serif; text-align: center; }
-    video, canvas { max-width: 100%; border: 1px solid #ccc; }
-    #cropped { margin-top: 10px; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 10px;
+      touch-action: manipulation;
+    }
+    #scanner-container {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      margin: 0 auto;
+      height: 40vh;
+      overflow: hidden;
+      border: 2px solid #333;
+      background: #000;
+    }
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #target-box {
+      position: absolute;
+      border: 3px solid #00FF00;
+      background: rgba(0, 255, 0, 0.2);
+      display: none;
+      pointer-events: none;
+    }
+    .controls {
+      text-align: center;
+      margin: 15px 0;
+    }
+    button {
+      padding: 12px 20px;
+      margin: 0 5px;
+      background: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+    button:disabled {
+      background: #cccccc;
+    }
+    #results {
+      text-align: center;
+      margin-top: 15px;
+    }
+    #croppedResult {
+      max-width: 100%;
+      border: 2px solid #4CAF50;
+      display: none;
+    }
+    #status {
+      margin: 10px 0;
+      color: #666;
+      min-height: 20px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
-  <h2>Tap to Detect and Crop Barcode-like Region</h2>
-  <video id="video" autoplay muted playsinline></video>
-  <canvas id="overlay" style="position:absolute; top:0; left:0;"></canvas>
-  <div>
-    <h3>Cropped Area</h3>
-    <canvas id="cropped"></canvas>
+  <h2 style="text-align:center;">Barcode Frame Detector</h2>
+  <p id="status">Ready to start</p>
+  <div id="scanner-container">
+    <video id="video" playsinline autoplay muted></video>
+    <div id="target-box"></div>
+  </div>
+  <div class="controls">
+    <button id="startButton">Start Camera</button>
+    <button id="captureButton" disabled>Capture Frame</button>
+  </div>
+  <div id="results">
+    <img id="croppedResult">
   </div>
 
   <script>
-    const video = document.getElementById('video');
-    const overlay = document.getElementById('overlay');
-    const croppedCanvas = document.getElementById('cropped');
-    const ctxOverlay = overlay.getContext('2d');
-    const maxGap = 4; // max pixels between lines
-    const brightnessThreshold = 100;
+    const elements = {
+      video: document.getElementById('video'),
+      targetBox: document.getElementById('target-box'),
+      startButton: document.getElementById('startButton'),
+      captureButton: document.getElementById('captureButton'),
+      croppedResult: document.getElementById('croppedResult'),
+      status: document.getElementById('status')
+    };
 
-    // Start video stream
-    navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
-      video.srcObject = stream;
-    });
+    const state = {
+      stream: null,
+      detectionBox: null,
+      isScanning: false,
+      lastFrameTime: 0
+    };
 
-    video.addEventListener('loadedmetadata', () => {
-      overlay.width = video.videoWidth;
-      overlay.height = video.videoHeight;
-      overlay.style.width = video.offsetWidth + 'px';
-      overlay.style.height = video.offsetHeight + 'px';
-    });
+    const config = {
+      minWidth: 60,
+      minHeight: 20,
+      maxWidth: 400,
+      maxHeight: 150,
+      edgeThreshold: 15,
+      maxGapRatio: 0.75, // Max allowed gap between lines (relative to line thickness)
+      frameRate: 10,
+      padding: 0.15
+    };
 
-    overlay.addEventListener('click', async e => {
-      const rect = overlay.getBoundingClientRect();
-      const scaleX = video.videoWidth / rect.width;
-      const scaleY = video.videoHeight / rect.height;
-      const x = Math.floor((e.clientX - rect.left) * scaleX);
-      const y = Math.floor((e.clientY - rect.top) * scaleY);
-
-      // Capture frame
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = video.videoWidth;
-      tempCanvas.height = video.videoHeight;
-      const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.drawImage(video, 0, 0);
-      const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-      const data = imageData.data;
-
-      function getBrightness(x, y) {
-        const i = (y * tempCanvas.width + x) * 4;
-        const r = data[i], g = data[i + 1], b = data[i + 2];
-        return 0.299 * r + 0.587 * g + 0.114 * b;
+    function safeExecute(fn, errorMessage) {
+      try {
+        return fn();
+      } catch (error) {
+        console.error(errorMessage, error);
+        elements.status.textContent = errorMessage;
+        return null;
       }
+    }
 
-      function isDark(x, y) {
-        return getBrightness(x, y) < brightnessThreshold;
+    async function startCamera() {
+      if (state.stream) return;
+      elements.status.textContent = "Starting camera...";
+      elements.startButton.disabled = true;
+
+      try {
+        state.stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          } 
+        });
+
+        elements.video.srcObject = state.stream;
+        await new Promise((resolve) => {
+          elements.video.onloadeddata = resolve;
+          elements.video.play();
+          setTimeout(() => {
+            if (elements.video.readyState < 2) {
+              throw new Error("Camera timed out");
+            }
+          }, 3000);
+        });
+
+        elements.captureButton.disabled = false;
+        elements.status.textContent = "Point at barcode";
+        elements.video.addEventListener('click', detectBarcodeOnTap);
+      } catch (error) {
+        elements.status.textContent = "Camera error: " + error.message;
+        elements.startButton.disabled = false;
+        state.stream = null;
       }
+    }
 
-      // Find the first vertical line at (x,y)
-      function isVerticalLine(x) {
-        let darkCount = 0;
-        for (let i = 0; i < tempCanvas.height; i++) {
-          if (isDark(x, i)) darkCount++;
+    function detectBarcodeOnTap() {
+      if (!state.isScanning || !elements.video.videoWidth) return;
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      canvas.width = elements.video.videoWidth;
+      canvas.height = elements.video.videoHeight;
+      ctx.drawImage(elements.video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const edges = findEdges(imageData);
+      state.detectionBox = findBarcodeArea(edges, canvas.width, canvas.height);
+
+      if (state.detectionBox) {
+        updateTargetBox();
+        elements.captureButton.disabled = false;
+      } else {
+        elements.status.textContent = "No barcode detected. Try again.";
+      }
+    }
+
+    function findEdges(imageData) {
+      const width = imageData.width;
+      const height = imageData.height;
+      const edgeData = new Uint8Array(width * height);
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const i = y * width + x;
+          const left = y * width + (x - 1);
+          const diff = Math.abs(
+            (imageData.data[i * 4] + imageData.data[i * 4 + 1] + imageData.data[i * 4 + 2]) -
+            (imageData.data[left * 4] + imageData.data[left * 4 + 1] + imageData.data[left * 4 + 2])
+          );
+          edgeData[i] = diff > config.edgeThreshold ? 255 : 0;
         }
-        return darkCount > tempCanvas.height * 0.4;
       }
 
-      let startX = x, endX = x;
+      return edgeData;
+    }
 
-      while (startX > 0 && isVerticalLine(startX - 1)) startX--;
-      while (endX < tempCanvas.width - 1 && isVerticalLine(endX + 1)) endX++;
+    function findBarcodeArea(edgeData, width, height) {
+      let lines = [];
+      let currentLine = null;
+      let maxThickness = 0;
 
-      // If there are large gaps, skip
-      if (endX - startX < 5) {
-        alert('No barcode-like region found.');
-        return;
-      }
+      for (let x = 0; x < width; x++) {
+        let startY = -1;
+        let endY = -1;
 
-      // Find top and bottom of vertical lines
-      let topY = tempCanvas.height, bottomY = 0;
-      for (let cx = startX; cx <= endX; cx++) {
-        for (let cy = 0; cy < tempCanvas.height; cy++) {
-          if (isDark(cx, cy)) {
-            if (cy < topY) topY = cy;
-            if (cy > bottomY) bottomY = cy;
+        for (let y = 0; y < height; y++) {
+          if (edgeData[y * width + x] > 0) {
+            if (startY === -1) startY = y;
+            endY = y;
+          } else if (startY !== -1) {
+            if (endY - startY > 5) { // Minimum line height
+              lines.push({ x, startY, endY });
+              maxThickness = Math.max(maxThickness, endY - startY);
+            }
+            startY = -1;
           }
         }
       }
 
-      // Draw overlay rectangle
-      ctxOverlay.clearRect(0, 0, overlay.width, overlay.height);
-      ctxOverlay.strokeStyle = "lime";
-      ctxOverlay.lineWidth = 2;
-      ctxOverlay.strokeRect(startX, topY, endX - startX, bottomY - topY);
+      if (lines.length < 5) return null; // Require at least 5 lines
 
-      // Crop and draw result
-      const cropWidth = endX - startX;
-      const cropHeight = bottomY - topY;
-      if (cropWidth > 0 && cropHeight > 0) {
-        const croppedCtx = croppedCanvas.getContext('2d');
-        croppedCanvas.width = cropWidth;
-        croppedCanvas.height = cropHeight;
-        croppedCtx.putImageData(tempCtx.getImageData(startX, topY, cropWidth, cropHeight), 0, 0);
+      let validLines = [lines[0]];
+      let prevX = lines[0].x;
+
+      for (let i = 1; i < lines.length; i++) {
+        const currentX = lines[i].x;
+        const gap = currentX - prevX;
+        if (gap <= maxThickness * config.maxGapRatio) {
+          validLines.push(lines[i]);
+          prevX = currentX;
+        } else {
+          break;
+        }
       }
-    });
+
+      if (validLines.length < 5) return null;
+
+      const minX = validLines[0].x;
+      const maxX = validLines[validLines.length - 1].x;
+      const minY = Math.min(...validLines.map(l => l.startY));
+      const maxY = Math.max(...validLines.map(l => l.endY));
+
+      return {
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY
+      };
+    }
+
+    function updateTargetBox() {
+      const videoRect = elements.video.getBoundingClientRect();
+      const scaleX = videoRect.width / elements.video.videoWidth;
+      const scaleY = videoRect.height / elements.video.videoHeight;
+      elements.targetBox.style.left = (state.detectionBox.x * scaleX) + 'px';
+      elements.targetBox.style.top = (state.detectionBox.y * scaleY) + 'px';
+      elements.targetBox.style.width = (state.detectionBox.width * scaleX) + 'px';
+      elements.targetBox.style.height = (state.detectionBox.height * scaleY) + 'px';
+      elements.targetBox.style.display = 'block';
+    }
+
+    function captureFrame() {
+      if (!state.detectionBox) return;
+      safeExecute(() => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const video = elements.video;
+
+        canvas.width = state.detectionBox.width * (1 + 2 * config.padding);
+        canvas.height = state.detectionBox.height * (1 + 2 * config.padding);
+
+        const cropX = Math.max(0, state.detectionBox.x - state.detectionBox.width * config.padding);
+        const cropY = Math.max(0, state.detectionBox.y - state.detectionBox.height * config.padding);
+        const cropWidth = Math.min(video.videoWidth - cropX, canvas.width);
+        const cropHeight = Math.min(video.videoHeight - cropY, canvas.height);
+
+        ctx.drawImage(
+          video, cropX, cropY, cropWidth, cropHeight,
+          0, 0, canvas.width, canvas.height
+        );
+
+        elements.croppedResult.src = canvas.toDataURL('image/jpeg');
+        elements.croppedResult.style.display = 'block';
+        elements.status.textContent = "Frame captured!";
+      }, "Capture failed");
+    }
+
+    function stopCamera() {
+      if (state.stream) {
+        state.stream.getTracks().forEach(track => track.stop());
+        state.stream = null;
+      }
+      state.isScanning = false;
+      elements.targetBox.style.display = 'none';
+      elements.startButton.disabled = false;
+      elements.captureButton.disabled = true;
+    }
+
+    elements.startButton.addEventListener('click', () => safeExecute(startCamera, "Start failed"));
+    elements.captureButton.addEventListener('click', () => safeExecute(captureFrame, "Capture failed"));
+    window.addEventListener('beforeunload', () => safeExecute(stopCamera, "Cleanup failed"));
   </script>
 </body>
 </html>
