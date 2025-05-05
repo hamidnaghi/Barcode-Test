@@ -84,10 +84,9 @@
   <div class="controls">
     <button id="startButton">Start Camera</button>
     <button id="captureButton" disabled>Capture Frame</button>
-    <button id="flashButton" disabled>Toggle Flash</button>
   </div>
   <div id="results">
-    <img id="croppedResult" alt="Cropped Barcode">
+    <img id="croppedResult">
   </div>
 
   <script>
@@ -97,18 +96,15 @@
       targetBox: document.getElementById('target-box'),
       startButton: document.getElementById('startButton'),
       captureButton: document.getElementById('captureButton'),
-      flashButton: document.getElementById('flashButton'),
       croppedResult: document.getElementById('croppedResult'),
       status: document.getElementById('status')
     };
 
     const state = {
       stream: null,
-      videoTrack: null,
       detectionBox: null,
       isScanning: false,
-      lastFrameTime: 0,
-      torchOn: false
+      lastFrameTime: 0
     };
 
     const config = {
@@ -116,7 +112,7 @@
       minHeight: 20,
       maxWidth: 400,
       maxHeight: 150,
-      edgeThreshold: 15,           // Lower for better barcode edge detection
+      edgeThreshold: 15,           // Lowered from 30
       minEdgeDensity: 0.1,         // Slightly less strict
       frameRate: 10,
       padding: 0.15
@@ -138,12 +134,12 @@
       elements.startButton.disabled = true;
 
       try {
-        state.stream = await navigator.mediaDevices.getUserMedia({
-          video: {
+        state.stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
             facingMode: 'environment',
             width: { ideal: 1280 },
             height: { ideal: 720 }
-          }
+          } 
         });
 
         elements.video.srcObject = state.stream;
@@ -159,20 +155,6 @@
 
         elements.captureButton.disabled = false;
         elements.status.textContent = "Point at barcode";
-
-        state.videoTrack = state.stream.getVideoTracks()[0];
-
-        // Check for flash support
-        if (state.videoTrack && typeof state.videoTrack.getCapabilities === 'function') {
-          const capabilities = state.videoTrack.getCapabilities();
-          if (capabilities && capabilities.torch) {
-            elements.flashButton.disabled = false;
-          } else {
-            elements.flashButton.disabled = true;
-            elements.status.textContent = "Flash not supported on this device.";
-          }
-        }
-
         startScanning();
       } catch (error) {
         elements.status.textContent = "Camera error: " + error.message;
@@ -210,7 +192,6 @@
 
           state.detectionBox = findBarcodeArea(edges, canvas.width, canvas.height);
 
-          // Debug overlay
           drawDebugOverlay(debugCtx, edges, canvas.width, canvas.height);
 
           if (state.detectionBox) {
@@ -329,41 +310,19 @@
       }, "Capture failed");
     }
 
-    function toggleFlash() {
-      if (!state.videoTrack) return;
-
-      const torch = !state.torchOn;
-      const constraints = { advanced: [{ torch: torch }] };
-
-      state.videoTrack.applyConstraints(constraints)
-        .then(() => {
-          state.torchOn = torch;
-          elements.flashButton.textContent = torch ? 'Turn Off Flash' : 'Turn On Flash';
-          elements.status.textContent = torch ? 'Flash turned ON' : 'Flash turned OFF';
-        })
-        .catch(err => {
-          console.error("Failed to toggle flash:", err);
-          elements.status.textContent = "Flash error: " + err.message;
-        });
-    }
-
     function stopCamera() {
       if (state.stream) {
         state.stream.getTracks().forEach(track => track.stop());
         state.stream = null;
-        state.videoTrack = null;
       }
       state.isScanning = false;
       elements.targetBox.style.display = 'none';
       elements.startButton.disabled = false;
       elements.captureButton.disabled = true;
-      elements.flashButton.disabled = true;
-      elements.flashButton.textContent = 'Toggle Flash';
     }
 
     elements.startButton.addEventListener('click', () => safeExecute(startCamera, "Start failed"));
     elements.captureButton.addEventListener('click', () => safeExecute(captureFrame, "Capture failed"));
-    elements.flashButton.addEventListener('click', () => safeExecute(toggleFlash, "Flash toggle failed"));
     window.addEventListener('beforeunload', () => safeExecute(stopCamera, "Cleanup failed"));
   </script>
 </body>
