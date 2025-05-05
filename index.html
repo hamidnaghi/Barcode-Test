@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reliable Barcode Scanner</title>
+    <!-- Add ZXing library -->
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -314,7 +316,7 @@
                 croppedResult.src = croppedCanvas.toDataURL('image/jpeg');
                 croppedResult.style.display = 'block';
                 
-                // Decode barcode (using ZXing library)
+                // Decode barcode using ZXing
                 const decodedText = await decodeBarcode(croppedCanvas);
                 
                 if (decodedText) {
@@ -375,15 +377,16 @@
             return { left: leftEdge, right: rightEdge };
         }
 
-        // Mock barcode decoding (replace with actual ZXing implementation)
+        // Real barcode decoding with ZXing
         async function decodeBarcode(canvas) {
-            // In a real implementation, you would use ZXing here
-            // This is just a mock that returns a sample value
-            return new Promise(resolve => {
-                setTimeout(() => {
-                    resolve("1234567890"); // Mock decoded value
-                }, 500);
-            });
+            try {
+                const codeReader = new ZXing.BrowserMultiFormatReader();
+                const result = await codeReader.decodeFromCanvas(canvas);
+                return result.text;
+            } catch (error) {
+                console.error("Barcode decoding error:", error);
+                throw new Error("Could not decode barcode");
+            }
         }
 
         // Handle camera errors
