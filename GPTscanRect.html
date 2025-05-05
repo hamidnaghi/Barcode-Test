@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Rectangle Detection and Cropping with OpenCV.js</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
+    canvas, img { max-width: 100%; margin-top: 10px; }
+    #output { margin-top: 20px; }
+  </style>
+</head>
+<body>
+
+<h2>Rectangle Detection and Crop</h2>
+<input type="file" id="imageInput" accept="image/*" />
+<canvas id="canvasInput"></canvas>
+<div id="output">
+  <h3>Cropped Rectangle:</h3>
+  <canvas id="canvasOutput"></canvas>
+</div>
+
+<!-- OpenCV.js from CDN -->
+<script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+
+<script>
+let inputCanvas = document.getElementById('canvasInput');
+let outputCanvas = document.getElementById('canvasOutput');
+let inputCtx = inputCanvas.getContext('2d');
+let outputCtx = outputCanvas.getContext('2d');
+
+function onOpenCvReady() {
+  document.getElementById('imageInput').addEventListener('change', function (e) {
+    let file = e.target.files[0];
+    if (!file) return;
+
+    let img = new Image();
+    img.onload = function () {
+      inputCanvas.width = img.width;
+      inputCanvas.height = img.height;
+      inputCtx.drawImage(img, 0, 0);
+
+      detectAndCropRectangle();
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function detectAndCropRectangle() {
+  let src = cv.imread(inputCanvas);
+  let gray = new cv.Mat();
+  let blur = new cv.Mat();
+  let edges = new cv.Mat();
+  let contours = new cv.MatVector();
+  let hierarchy = new cv.Mat();
+
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+  cv.Canny(blur, edges, 75, 200);
+
+  cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+  let maxArea = 0;
+  let bestContour = null;
+
+  for (let i = 0; i < contours.size(); i++) {
+    let cnt = contours.get(i);
+    let approx = new cv.Mat();
+    cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
+
+    if (approx.rows === 4) { // Found a quadrilateral
+      let area = cv.contourArea(approx);
+      if (area > maxArea) {
+        maxArea = area;
+        bestContour = approx;
+      }
+    }
+  }
+
+  if (bestContour) {
+    let pts = [];
+    for (let i = 0; i < 4; i++) {
+      pts.push({
+        x: bestContour.data32S[i * 2],
+        y: bestContour.data32S[i * 2 + 1]
+      });
+    }
+
+    // Sort the points in order: top-left, top-right, bottom-right, bottom-left
+    pts.sort((a, b) => a.y - b.y);
+    let top = pts.slice(0, 2).sort((a, b) => a.x - b.x);
+    let bottom = pts.slice(2, 4).sort((a, b) => a.x - b.x);
+    let ordered = [top[0], top[1], bottom[1], bottom[0]];
+
+    let [tl, tr, br, bl] = ordered;
+    let widthTop = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+    let widthBottom = Math.hypot(br.x - bl.x, br.y - bl.y);
+    let heightLeft = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+    let heightRight = Math.hypot(br.x - tr.x, br.y - tr.y);
+    let maxWidth = Math.max(widthTop, widthBottom);
+    let maxHeight = Math.max(heightLeft, heightRight);
+
+    let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      tl.x, tl.y,
+      tr.x, tr.y,
+      br.x, br.y,
+      bl.x, bl.y
+    ]);
+    let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      0, 0,
+      maxWidth, 0,
+      maxWidth, maxHeight,
+      0, maxHeight
+    ]);
+
+    let M = cv.getPerspectiveTransform(srcTri, dstTri);
+    let dst = new cv.Mat();
+    cv.warpPerspective(src, dst, M, new cv.Size(maxWidth, maxHeight));
+
+    cv.imshow(outputCanvas, dst);
+
+    src.delete(); gray.delete(); blur.delete(); edges.delete();
+    contours.delete(); hierarchy.delete(); dst.delete();
+    if (bestContour) bestContour.delete();
+    srcTri.delete(); dstTri.delete(); M.delete();
+  } else {
+    alert("No rectangle found.");
+    src.delete(); gray.delete(); blur.delete(); edges.delete();
+    contours.delete(); hierarchy.delete();
+  }
+}
+</script>
+
+</body>
+</html>
