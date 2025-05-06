@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reliable Barcode Scanner Ver 1.000 </title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <title>Reliable Barcode Scanner</title>
+    <!-- Add ZXing library -->
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -99,7 +100,7 @@
     <h2 style="text-align:center;">Reliable Barcode Scanner</h2>
     <p id="status">Click Start Camera to begin</p>
     <div id="camera-error"></div>
-
+    
     <div id="scanner-container">
         <video id="video" playsinline autoplay muted></video>
         <div id="alignment-line"></div>
@@ -110,7 +111,7 @@
         <button id="flashButton" disabled>Turn On Flash</button>
         <button id="captureButton" disabled>Capture & Decode</button>
     </div>
-
+    
     <div id="results">
         <img id="croppedResult">
         <div id="decodedResult"></div>
@@ -139,7 +140,7 @@
         };
         state.scanContext = state.scanCanvas.getContext('2d', { willReadFrequently: true });
 
-        // Start camera with multiple fallbacks and initialize Quagga
+        // Start camera with multiple fallbacks
         async function startCamera() {
             cameraError.style.display = 'none';
             statusText.textContent = "Starting camera...";
@@ -179,7 +180,7 @@
 
                 video.srcObject = state.stream;
                 video.style.display = 'block';
-
+                
                 // Wait for video to be ready
                 await new Promise((resolve, reject) => {
                     const timeout = setTimeout(() => {
@@ -195,14 +196,14 @@
 
                 // Get video track for flash control
                 state.track = state.stream.getVideoTracks()[0];
-
+                
                 // Initialize alignment line
                 alignmentLine.style.display = 'block';
-
+                
                 // Enable controls
                 flashButton.disabled = false;
                 captureButton.disabled = false;
-
+                
                 // Check flash support
                 if (state.track.getCapabilities().torch) {
                     flashButton.disabled = false;
@@ -210,48 +211,14 @@
                     flashButton.disabled = true;
                     flashButton.title = "Flash not supported on this device";
                 }
-
+                
                 statusText.textContent = "Align barcode with green line";
                 state.isScanning = true;
-                initQuagga(); // Initialize Quagga after camera starts
                 scanFrame();
 
             } catch (error) {
                 handleCameraError(error);
             }
-        }
-
-        function initQuagga() {
-            Quagga.init({
-                inputStream: {
-                    name: "Live",
-                    type: "LiveStream",
-                    target: video // Pass the video element as the stream target
-                },
-                decoder: {
-                    readers: ["ean_8_reader", "ean_13_reader", "code_39_reader", "code_128_reader"] // Specify barcode types
-                }
-            }, function(err) {
-                if (err) {
-                    console.error("Quagga initialization failed:", err);
-                    statusText.textContent = "Barcode reader initialization failed.";
-                    return
-                }
-                console.log("Quagga initialization successful.");
-                Quagga.start();
-            });
-
-            Quagga.onDetected(function(result) {
-                console.log("Barcode detected:", result);
-                if (result && result.codeResult && result.codeResult.code) {
-                    decodedResult.textContent = `Decoded: ${result.codeResult.code}`;
-                    decodedResult.style.display = 'block';
-                    statusText.textContent = "Decoding successful!";
-                    Quagga.stop(); // Stop scanning after successful decode (optional)
-                    state.isScanning = false;
-                    captureButton.disabled = true;
-                }
-            });
         }
 
         // Toggle flash with proper error handling
@@ -260,7 +227,7 @@
                 statusText.textContent = "Flash not supported on this device";
                 return;
             }
-
+            
             state.flashOn = !state.flashOn;
             try {
                 await state.track.applyConstraints({
@@ -275,23 +242,154 @@
             }
         }
 
-        // Continuous frame scanning (no longer manually decoding)
+        // Continuous frame scanning
         function scanFrame() {
             if (!state.isScanning) return;
+            
+            // Set canvas size to match video
+            state.scanCanvas.width = video.videoWidth;
+            state.scanCanvas.height = video.videoHeight;
+            
+            // Draw current frame
+            state.scanContext.drawImage(video, 0, 0);
+            
+            // Continue scanning
             requestAnimationFrame(scanFrame);
         }
 
-        // Capture and decode barcode (Quagga handles the decoding)
+        // Capture and decode barcode
         async function captureAndDecode() {
             if (!state.isScanning) return;
-            statusText.textContent = "Scanning for barcode...";
+            
+            statusText.textContent = "Processing...";
             captureButton.disabled = true;
-            // Quagga.start() is already called in initQuagga,
-            // and it continuously scans the video stream.
-            // The result is handled in the Quagga.onDetected callback.
+            
+            try {
+                // Get alignment line position (center)
+                const centerY = Math.floor(video.videoHeight / 2);
+                const scanHeight = 100; // Scan area height in pixels
+                
+                // Create canvas for processing
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = scanHeight;
+                const ctx = canvas.getContext('2d');
+                
+                // Capture area around alignment line
+                ctx.drawImage(
+                    video, 
+                    0, centerY - scanHeight/2, 
+                    video.videoWidth, scanHeight,
+                    0, 0, 
+                    video.videoWidth, scanHeight
+                );
+                
+                // Find barcode edges
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const { left, right } = findBarcodeEdges(imageData);
+                
+                if (left >= right) {
+                    throw new Error("No barcode detected");
+                }
+                
+                // Calculate crop area with padding
+                const barcodeWidth = right - left;
+                const padding = barcodeWidth * 0.2; // 20% padding
+                
+                const cropX = Math.max(0, left - padding);
+                const cropY = Math.max(0, centerY - scanHeight/2 - padding);
+                const cropWidth = Math.min(video.videoWidth - cropX, barcodeWidth + 2*padding);
+                const cropHeight = Math.min(video.videoHeight - cropY, scanHeight + 2*padding);
+                
+                // Create final cropped image
+                const croppedCanvas = document.createElement('canvas');
+                croppedCanvas.width = cropWidth;
+                croppedCanvas.height = cropHeight;
+                const croppedCtx = croppedCanvas.getContext('2d');
+                croppedCtx.drawImage(
+                    video, 
+                    cropX, cropY, cropWidth, cropHeight,
+                    0, 0, cropWidth, cropHeight
+                );
+                
+                // Display results
+                croppedResult.src = croppedCanvas.toDataURL('image/jpeg');
+                croppedResult.style.display = 'block';
+                
+                // Decode barcode using ZXing
+                const decodedText = await decodeBarcode(croppedCanvas);
+                
+                if (decodedText) {
+                    decodedResult.textContent = `Decoded: ${decodedText}`;
+                    decodedResult.style.display = 'block';
+                    statusText.textContent = "Decoding successful!";
+                } else {
+                    throw new Error("Could not decode barcode");
+                }
+                
+            } catch (error) {
+                statusText.textContent = error.message;
+                decodedResult.textContent = "Error: " + error.message;
+                decodedResult.style.display = 'block';
+            } finally {
+                captureButton.disabled = false;
+            }
         }
 
-        // Handle camera errors (same as before)
+        // Find barcode edges along the alignment line
+        function findBarcodeEdges(imageData) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const centerY = Math.floor(height / 2);
+            const threshold = 50; // Edge detection threshold
+            
+            let leftEdge = width;
+            let rightEdge = 0;
+            
+            // Scan horizontally at center line
+            for (let x = 0; x < width; x++) {
+                // Check multiple vertical points for robustness
+                let edgeCount = 0;
+                for (let yOffset = -3; yOffset <= 3; yOffset++) {
+                    const y = centerY + yOffset;
+                    if (y < 0 || y >= height) continue;
+                    
+                    const i = (y * width + x) * 4;
+                    const brightness = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
+                    
+                    // Compare with previous pixel
+                    if (x > 0) {
+                        const prevI = (y * width + (x-1)) * 4;
+                        const prevBrightness = (imageData.data[prevI] + imageData.data[prevI+1] + imageData.data[prevI+2]) / 3;
+                        if (Math.abs(brightness - prevBrightness) > threshold) {
+                            edgeCount++;
+                        }
+                    }
+                }
+                
+                // If found significant edge
+                if (edgeCount > 2) {
+                    leftEdge = Math.min(leftEdge, x);
+                    rightEdge = Math.max(rightEdge, x);
+                }
+            }
+            
+            return { left: leftEdge, right: rightEdge };
+        }
+
+        // Real barcode decoding with ZXing
+        async function decodeBarcode(canvas) {
+            try {
+                const codeReader = new ZXing.BrowserMultiFormatReader();
+                const result = await codeReader.decodeFromCanvas(canvas);
+                return result.text;
+            } catch (error) {
+                console.error("Barcode decoding error:", error);
+                throw new Error("Could not decode barcode");
+            }
+        }
+
+        // Handle camera errors
         function handleCameraError(error) {
             console.error("Camera error:", error);
             cameraError.innerHTML = `
@@ -309,10 +407,11 @@
             cleanup();
         }
 
-        // Cleanup resources (modified for Quagga)
+        // Cleanup resources
         function cleanup() {
             if (state.stream) {
                 state.stream.getTracks().forEach(track => {
+                    // Turn off flash before stopping
                     if (state.flashOn && track.getCapabilities().torch) {
                         track.applyConstraints({ advanced: [{torch: false}] })
                             .catch(e => console.error("Error turning off flash:", e));
@@ -331,16 +430,13 @@
             flashButton.textContent = "Turn On Flash";
             flashButton.classList.remove('flash-on');
             state.flashOn = false;
-            if (Quagga) {
-                Quagga.stop();
-            }
         }
 
-        // Event listeners (same as before)
+        // Event listeners
         startButton.addEventListener('click', startCamera);
         flashButton.addEventListener('click', toggleFlash);
         captureButton.addEventListener('click', captureAndDecode);
-
+        
         window.addEventListener('beforeunload', cleanup);
     </script>
 </body>
