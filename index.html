@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reliable Barcode Scanner</title>
-    <script src="https://cdn.jsdelivr.net/npm/dynamsoft-javascript-barcode@9.6.21/dist/dbr.min.js"></script>
+    <title>Reliable Barcode Scanner Ver 1.000 </title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -135,22 +135,11 @@
             flashOn: false,
             isScanning: false,
             scanCanvas: document.createElement('canvas'),
-            scanContext: null,
-            barcodeReader: null // Dynamsoft Barcode Reader instance
+            scanContext: null
         };
         state.scanContext = state.scanCanvas.getContext('2d', { willReadFrequently: true });
 
- // Initialize Dynamsoft Barcode Reader
-        async function initBarcodeReader() {
-            try {
-                Dynamsoft.DBR.BarcodeReader.license = "YOUR_ACTUAL_LICENSE_KEY"; // <--- REPLACE THIS
-                state.barcodeReader = await Dynamsoft.DBR.BarcodeReader.createInstance();
-            } catch (error) {
-                console.error("Failed to initialize Dynamsoft Barcode Reader:", error);
-                statusText.textContent = "Failed to initialize barcode reader.";
-            }
-        }
-        // Start camera with multiple fallbacks
+        // Start camera with multiple fallbacks and initialize Quagga
         async function startCamera() {
             cameraError.style.display = 'none';
             statusText.textContent = "Starting camera...";
@@ -224,12 +213,45 @@
 
                 statusText.textContent = "Align barcode with green line";
                 state.isScanning = true;
+                initQuagga(); // Initialize Quagga after camera starts
                 scanFrame();
-                await initBarcodeReader(); // Initialize barcode reader after camera start
 
             } catch (error) {
                 handleCameraError(error);
             }
+        }
+
+        function initQuagga() {
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: video // Pass the video element as the stream target
+                },
+                decoder: {
+                    readers: ["ean_8_reader", "ean_13_reader", "code_39_reader", "code_128_reader"] // Specify barcode types
+                }
+            }, function(err) {
+                if (err) {
+                    console.error("Quagga initialization failed:", err);
+                    statusText.textContent = "Barcode reader initialization failed.";
+                    return
+                }
+                console.log("Quagga initialization successful.");
+                Quagga.start();
+            });
+
+            Quagga.onDetected(function(result) {
+                console.log("Barcode detected:", result);
+                if (result && result.codeResult && result.codeResult.code) {
+                    decodedResult.textContent = `Decoded: ${result.codeResult.code}`;
+                    decodedResult.style.display = 'block';
+                    statusText.textContent = "Decoding successful!";
+                    Quagga.stop(); // Stop scanning after successful decode (optional)
+                    state.isScanning = false;
+                    captureButton.disabled = true;
+                }
+            });
         }
 
         // Toggle flash with proper error handling
@@ -253,142 +275,20 @@
             }
         }
 
-        // Continuous frame scanning (no longer decoding here)
+        // Continuous frame scanning (no longer manually decoding)
         function scanFrame() {
             if (!state.isScanning) return;
-
-            // Set canvas size to match video
-            state.scanCanvas.width = video.videoWidth;
-            state.scanCanvas.height = video.videoHeight;
-
-            // Draw current frame
-            state.scanContext.drawImage(video, 0, 0);
-
-            // Continue scanning
             requestAnimationFrame(scanFrame);
         }
 
-        // Capture and decode barcode using Dynamsoft
+        // Capture and decode barcode (Quagga handles the decoding)
         async function captureAndDecode() {
-            if (!state.isScanning || !state.barcodeReader) return;
-
-            statusText.textContent = "Processing...";
+            if (!state.isScanning) return;
+            statusText.textContent = "Scanning for barcode...";
             captureButton.disabled = true;
-
-            try {
-                // Get alignment line position (center)
-                const centerY = Math.floor(video.videoHeight / 2);
-                const scanHeight = 100; // Scan area height in pixels
-
-                // Create canvas for processing
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = scanHeight;
-                const ctx = canvas.getContext('2d');
-
-                // Capture area around alignment line
-                ctx.drawImage(
-                    video,
-                    0, centerY - scanHeight/2,
-                    video.videoWidth, scanHeight,
-                    0, 0,
-                    video.videoWidth, scanHeight
-                );
-
-                // Find barcode edges (keeping this for cropping)
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const { left, right } = findBarcodeEdges(imageData);
-
-                let decodedResults = [];
-                if (left < right) {
-                    // Calculate crop area with padding
-                    const barcodeWidth = right - left;
-                    const padding = barcodeWidth * 0.2; // 20% padding
-
-                    const cropX = Math.max(0, left - padding);
-                    const cropY = Math.max(0, centerY - scanHeight/2 - padding);
-                    const cropWidth = Math.min(video.videoWidth - cropX, barcodeWidth + 2*padding);
-                    const cropHeight = Math.min(video.videoHeight - cropY, scanHeight + 2*padding);
-
-                    // Create final cropped image
-                    const croppedCanvas = document.createElement('canvas');
-                    croppedCanvas.width = cropWidth;
-                    croppedCanvas.height = cropHeight;
-                    const croppedCtx = croppedCanvas.getContext('2d');
-                    croppedCtx.drawImage(
-                        video,
-                        cropX, cropY, cropWidth, cropHeight,
-                        0, 0, cropWidth, cropHeight
-                    );
-
-                    // Display results
-                    croppedResult.src = croppedCanvas.toDataURL('image/jpeg');
-                    croppedResult.style.display = 'block';
-
-                    // Decode barcode using Dynamsoft
-                    decodedResults = await state.barcodeReader.decode(croppedCanvas);
-                } else {
-                    // Decode from the full canvas if no edges found
-                    decodedResults = await state.barcodeReader.decode(state.scanCanvas);
-                }
-
-
-                if (decodedResults.length > 0) {
-                    decodedResult.textContent = `Decoded: ${decodedResults[0].text}`;
-                    decodedResult.style.display = 'block';
-                    statusText.textContent = "Decoding successful!";
-                } else {
-                    throw new Error("Could not decode barcode");
-                }
-
-            } catch (error) {
-                statusText.textContent = error.message;
-                decodedResult.textContent = "Error: " + error.message;
-                decodedResult.style.display = 'block';
-            } finally {
-                captureButton.disabled = false;
-            }
-        }
-
-        // Find barcode edges along the alignment line (same as before)
-        function findBarcodeEdges(imageData) {
-            const width = imageData.width;
-            const height = imageData.height;
-            const centerY = Math.floor(height / 2);
-            const threshold = 50; // Edge detection threshold
-
-            let leftEdge = width;
-            let rightEdge = 0;
-
-            // Scan horizontally at center line
-            for (let x = 0; x < width; x++) {
-                // Check multiple vertical points for robustness
-                let edgeCount = 0;
-                for (let yOffset = -3; yOffset <= 3; yOffset++) {
-                    const y = centerY + yOffset;
-                    if (y < 0 || y >= height) continue;
-
-                    const i = (y * width + x) * 4;
-                    const brightness = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
-
-                    // Compare with previous pixel
-                    if (x > 0) {
-                        const prevI = (y * width + (x-1)) * 4;
-                        const prevBrightness = (imageData.data[prevI] + imageData.data[prevI+1] + imageData.data[prevI+2]) / 3;
-                        if (Math.abs(brightness - prevBrightness) > threshold) {
-                            edgeCount++;
-                        }
-                    }
-                }
-
-                // If found significant edge
-                if (edgeCount > 2) {
-                    leftEdge = Math.min(leftEdge, x);
-                    rightEdge = Math.max(rightEdge, x);
-                }
-            }
-
-            return { left: leftEdge, right: rightEdge };
+            // Quagga.start() is already called in initQuagga,
+            // and it continuously scans the video stream.
+            // The result is handled in the Quagga.onDetected callback.
         }
 
         // Handle camera errors (same as before)
@@ -409,11 +309,10 @@
             cleanup();
         }
 
-        // Cleanup resources (modified to destroy barcode reader)
+        // Cleanup resources (modified for Quagga)
         function cleanup() {
             if (state.stream) {
                 state.stream.getTracks().forEach(track => {
-                    // Turn off flash before stopping
                     if (state.flashOn && track.getCapabilities().torch) {
                         track.applyConstraints({ advanced: [{torch: false}] })
                             .catch(e => console.error("Error turning off flash:", e));
@@ -432,10 +331,8 @@
             flashButton.textContent = "Turn On Flash";
             flashButton.classList.remove('flash-on');
             state.flashOn = false;
-
-            if (state.barcodeReader) {
-                state.barcodeReader.destroy();
-                state.barcodeReader = null;
+            if (Quagga) {
+                Quagga.stop();
             }
         }
 
