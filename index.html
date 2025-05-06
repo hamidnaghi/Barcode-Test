@@ -140,17 +140,16 @@
         };
         state.scanContext = state.scanCanvas.getContext('2d', { willReadFrequently: true });
 
-        // Initialize Dynamsoft Barcode Reader
+ // Initialize Dynamsoft Barcode Reader
         async function initBarcodeReader() {
             try {
-                Dynamsoft.DBR.BarcodeReader.license = "DLS2eyJoYW5kc2hha2VDb2RlIjoiMjAwMDAxLTE2NDk4Mjk3OTI2MzUiLCJvcmdhbml6YXRpb25JRCI6IjIwMDAwMSIsInNlc3NJRCI6ImQ5MmRmZThmM2Q5YjQ3MzU4Y2I1ZGI2ZTI2YmI5NzlmIiwicHJvZHVjdENodeSI6IkhvdlJpUjFvT2FaZk5RIiwidmVyc2lvbiI6IjIuMCIsInZhbGlkVW50aWwiOjE3MjI1OTIwMDAwMDB9"; // Replace with your actual license key
+                Dynamsoft.DBR.BarcodeReader.license = "YOUR_ACTUAL_LICENSE_KEY"; // <--- REPLACE THIS
                 state.barcodeReader = await Dynamsoft.DBR.BarcodeReader.createInstance();
             } catch (error) {
                 console.error("Failed to initialize Dynamsoft Barcode Reader:", error);
                 statusText.textContent = "Failed to initialize barcode reader.";
             }
         }
-
         // Start camera with multiple fallbacks
         async function startCamera() {
             cameraError.style.display = 'none';
