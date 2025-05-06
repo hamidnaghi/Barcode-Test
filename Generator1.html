@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4-Bit Symbol Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            display: block;
+            margin: 20px auto;
+        }
+        button:hover {
+            background: #3367d6;
+        }
+        .symbol-display {
+            margin: 30px auto;
+            border: 2px solid #333;
+            padding: 10px;
+            display: inline-block;
+            background: white;
+        }
+        .grid-row {
+            display: flex;
+            margin-bottom: 5px;
+        }
+        .square {
+            width: 40px;
+            height: 40px;
+            position: relative;
+            background: white;
+            border: 1px solid #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 20px;
+        }
+        .separator {
+            width: 20px;
+            height: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .separator-dot {
+            width: 6px;
+            height: 6px;
+            background: black;
+            border-radius: 50%;
+            margin: 2px 0;
+        }
+        .data-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>4-Bit Symbol Generator</h1>
+        
+        <div class="input-group">
+            <label for="inputData">Data to Encode (Hex 0-F):</label>
+            <textarea id="inputData" placeholder="Enter hexadecimal symbols (0-F) to encode">1A3F</textarea>
+        </div>
+        
+        <button id="generateBtn">Generate Symbols</button>
+        
+        <div class="symbol-display" id="symbolDisplay">
+            <!-- Rows will be inserted here by JavaScript -->
+        </div>
+        
+        <div class="data-info">
+            <h3>Encoding Information:</h3>
+            <p><strong>Symbol Mapping:</strong> 4-bit patterns (0000-1111) to symbols (e,1-9,A-F)</p>
+            <p><strong>Note:</strong> 'e' represents 0000 (non-standard, typically '0')</p>
+            <p><strong>Grid Size:</strong> 2 rows × 8 symbols (16 total symbols)</p>
+            <p><strong>Data Capacity:</strong> 8 bytes (64 bits)</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Constants
+            const ROWS = 2;
+            const COLS = 8;
+            
+            // Symbol mapping (e=0000, 1=0001, ..., F=1111)
+            const SYMBOL_MAP = {
+                '0': 'e', '1': '1', '2': '2', '3': '3',
+                '4': '4', '5': '5', '6': '6', '7': '7',
+                '8': '8', '9': '9', 'A': 'A', 'B': 'B',
+                'C': 'C', 'D': 'D', 'E': 'E', 'F': 'F',
+                'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D',
+                'e': 'E', 'f': 'F'
+            };
+            
+            // Elements
+            const inputData = document.getElementById('inputData');
+            const generateBtn = document.getElementById('generateBtn');
+            const symbolDisplay = document.getElementById('symbolDisplay');
+            
+            // Initialize
+            generateSymbols();
+            
+            // Convert hex string to symbol array
+            function hexToSymbols(hexStr) {
+                const symbols = [];
+                for (let i = 0; i < hexStr.length; i++) {
+                    const char = hexStr[i];
+                    if (SYMBOL_MAP[char]) {
+                        symbols.push(SYMBOL_MAP[char]);
+                    }
+                }
+                return symbols;
+            }
+            
+            // Render the symbols
+            function renderSymbols(symbols) {
+                symbolDisplay.innerHTML = '';
+                
+                // Create rows
+                for (let row = 0; row < ROWS; row++) {
+                    const rowDiv = document.createElement('div');
+                    rowDiv.className = 'grid-row';
+                    
+                    // Add squares and separators for this row
+                    for (let col = 0; col < COLS; col++) {
+                        const index = row * COLS + col;
+                        if (index < symbols.length) {
+                            // Add square with symbol
+                            const square = document.createElement('div');
+                            square.className = 'square';
+                            square.textContent = symbols[index];
+                            rowDiv.appendChild(square);
+                            
+                            // Add separator (except after last square)
+                            if (col < COLS - 1) {
+                                const separator = document.createElement('div');
+                                separator.className = 'separator';
+                                separator.innerHTML = `
+                                    <div class="separator-dot"></div>
+                                    <div class="separator-dot"></div>
+                                `;
+                                rowDiv.appendChild(separator);
+                            }
+                        }
+                    }
+                    
+                    symbolDisplay.appendChild(rowDiv);
+                }
+            }
+            
+            // Generate the symbols
+            function generateSymbols() {
+                const data = inputData.value.trim().toUpperCase();
+                if (!data) {
+                    alert('Please enter data to encode');
+                    return;
+                }
+                
+                const symbols = hexToSymbols(data);
+                renderSymbols(symbols);
+            }
+            
+            // Event listeners
+            generateBtn.addEventListener('click', generateSymbols);
+        });
+    </script>
+</body>
+</html>
