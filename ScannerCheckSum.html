@@ -353,34 +353,23 @@
             // cropBarcodeImageFromCanvas]
             
             // Checksum functions
-            function calculateChecksum(data, digits) {
-                let sum = 0;
-                
-                for (let i = 0; i < data.length; i++) {
-                    let digit = parseInt(data.charAt(data.length - 1 - i));
-                    
-                    if (i % 2 === 0) {
-                        digit *= 2;
-                        if (digit > 9) {
-                            digit = (digit % 10) + Math.floor(digit / 10);
-                        }
-                    }
-                    
-                    sum += digit;
-                }
-                
-                const checksum = (10 - (sum % 10)) % 10;
-                
-                if (digits === 2) {
-                    let secondDigit = 0;
-                    for (let i = 0; i < data.length; i++) {
-                        secondDigit += parseInt(data.charAt(i));
-                    }
-                    secondDigit = (secondDigit % 9) || 9;
-                    return checksum.toString() + secondDigit.toString();
-                }
-                
-                return checksum.toString().padStart(digits, '0');
+            function calculateChecksum(data,key, digits) {
+              let hash = 0;
+
+    // Mix key into hash
+    for (let i = 0; i < key.length; i++) {
+        hash ^= key.charCodeAt(i) << (i % 8);
+    }
+
+    // Process data
+    for (let i = 0; i < data.length; i++) {
+        hash = ((hash << 5) - hash) + data.charCodeAt(i);
+        hash = hash & 0xFFFFFFFF;
+    }
+
+    // Final checksum
+    const result = Math.abs(hash).toString().slice(-digits).padStart(digits, '0');
+    return result;
             }
             
             function verifyChecksum(fullCode, digits = VERIFICATION_DIGITS) {
@@ -388,8 +377,8 @@
                 
                 const dataPart = fullCode.slice(0, -digits);
                 const checksumPart = fullCode.slice(-digits);
-                const calculatedChecksum = calculateChecksum(dataPart, digits);
-                statusElement.textContent = `Hamid found: ${calculatedChecksum} ${dataPart} (verified)`;
+                const calculatedChecksum = calculateChecksum(dataPart,key = 's3cr3t', digits);
+                statusElement.textContent = `Hamid found: ${calculatedChecksum} ${dataPart} ${digits} ${checksumPart} (verified)`;
                 return {
                     isValid: checksumPart === calculatedChecksum,
                     data: dataPart,
