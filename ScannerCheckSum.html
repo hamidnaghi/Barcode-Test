@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Barcode Scanner</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        #interactive.viewport {
+            position: relative;
+            height: 40vh;
+            overflow: hidden;
+            text-align: center;
+        }
+        #interactive.viewport > canvas, #interactive.viewport > video {
+            height: 40vh;
+            width: auto;
+            max-width: 100vw;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+            object-fit: contain;
+            background: #000;
+        }
+        canvas.drawing, canvas.drawingBuffer {
+            position: absolute;
+            left: 0;
+            top: 0;
+            pointer-events: none;
+            background: transparent !important;
+            z-index: 2;
+        }
+        #interactive.viewport > video {
+            z-index: 1;
+            position: relative;
+        }
+        #result-container {
+            margin-top: 20px;
+        }
+        #cropped-canvas {
+            max-width: 100%;
+            border: 2px solid #333;
+            margin-top: 10px;
+            background-color: #f8f8f8;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        #result-container {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+        .button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #flash-button {
+            background-color: #FF9800;
+        }
+        .button-container {
+            margin: 15px 0;
+            text-align: center;
+        }
+        #scan-button {
+            background-color: #2196F3;
+            font-weight: bold;
+        }
+        #status {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+        #verification-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        #verification-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        #checksum-container {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f8f8f8;
+            border-radius: 5px;
+            display: none;
+        }
+        canvas.imgBuffer {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>Advanced Barcode Scanner</h1>
+    
+    <div>
+        <button id="start-button" class="button">Start Camera</button>
+        <button id="stop-button" class="button" disabled>Stop Camera</button>
+        <button id="flash-button" class="button" disabled>Toggle Flash</button>
+        <button id="download-button" class="button" disabled>Download Barcode</button>
+    </div>
+    
+    <div id="status">Click "Start Camera" to begin scanning</div>
+    
+    <!-- Scanner viewport with verification overlay -->
+    <div id="interactive" class="viewport">
+        <div id="verification-overlay">
+            <div id="verification-content">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="green" stroke-width="2">
+                    <path d="M20 6L9 17l-5-5" />
+                </svg>
+                <h3>Barcode Verified!</h3>
+                <p id="verified-code"></p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="button-container">
+        <button id="scan-button" class="button" disabled>Scan Barcode</button>
+    </div>
+    
+    <div id="checksum-container">
+        <h3>Checksum Verification:</h3>
+        <p id="checksum-result"></p>
+    </div>
+    
+    <div id="result-container">
+        <h3>Cropped Barcode:</h3>
+        <canvas id="cropped-canvas"></canvas>
+    </div>
+
+    <!-- Include QuaggaJS library -->
+    <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+    
+    <script>
+        // DOM Elements
+        const startButton = document.getElementById('start-button');
+        const stopButton = document.getElementById('stop-button');
+        const flashButton = document.getElementById('flash-button');
+        const scanButton = document.getElementById('scan-button');
+        const downloadButton = document.getElementById('download-button');
+        const statusElement = document.getElementById('status');
+        const croppedCanvas = document.getElementById('cropped-canvas');
+        const verificationOverlay = document.getElementById('verification-overlay');
+        const verifiedCode = document.getElementById('verified-code');
+        const checksumContainer = document.getElementById('checksum-container');
+        const checksumResult = document.getElementById('checksum-result');
+        
+        // Constants
+        const VERIFICATION_DIGITS = 3;
+        const VALIDATION_FRAMES_REQUIRED = 3;
+        
+        // Variables
+        const croppedCtx = croppedCanvas.getContext('2d');
+        let lastDetectedBarcode = null;
+        let isScanning = false;
+        let stream = null;
+        let validFramesCount = 0;
+        let lastValidCode = null;
+        
+        // Flashlight control
+        flashButton.addEventListener('click', async () => {
+            if (!stream) return;
+            
+            const track = stream.getVideoTracks()[0];
+            if (!track) return;
+            
+            if ('torch' in track) {
+                try {
+                    await track.applyConstraints({
+                        advanced: [{torch: !track.getSettings().torch}]
+                    });
+                    flashButton.textContent = track.getSettings().torch ? 'Flash ON' : 'Flash OFF';
+                } catch (err) {
+                    console.error("Flash error:", err);
+                }
+            } else {
+                statusElement.textContent = "Flash not supported on this device";
+            }
+        });
+        
+        // QuaggaJS configuration
+        const quaggaConfig = {
+            inputStream: {
+                name: "Live",
+                type: "LiveStream",
+                target: document.querySelector('#interactive'),
+                constraints: {
+                    facingMode: "environment",
+                    torch: false
+                }
+            },
+            locator: {
+                patchSize: "large",
+                halfSample: false
+            },
+            numOfWorkers: navigator.hardwareConcurrency || 4,
+            decoder: {
+                readers: [
+                    "code_128_reader",
+                    "ean_reader",
+                    "ean_8_reader",
+                    "upc_reader",
+                    "upc_e_reader"
+                ],
+                multiple: false,
+                tryHarder: true,
+                supplements: [
+                    'ean_reader', 
+                    'upc_reader',
+                    'code_128_reader'
+                ]
+            },
+            locate: true,
+            frequency: 5,
+            tracking: true
+        };
+        
+        // Start the scanner
+        startButton.addEventListener('click', async () => {
+            if (isScanning) return;
+            
+            try {
+                // Get camera stream first for flashlight control
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "environment"
+                    }
+                });
+                
+                Quagga.init(quaggaConfig, (err) => {
+                    if (err) {
+                        console.error("Error starting Quagga:", err);
+                        statusElement.textContent = `Error starting camera: ${err}`;
+                        return;
+                    }
+                    
+                    Quagga.start();
+                    isScanning = true;
+                    
+                    // Update UI
+                    startButton.disabled = true;
+                    stopButton.disabled = false;
+                    flashButton.disabled = false;
+                    scanButton.disabled = false;
+                    statusElement.textContent = "Camera active. Point at a barcode.";
+                    
+                    // Set up processing
+                    Quagga.onProcessed(handleProcessing);
+                    Quagga.onDetected(handleBarcodeDetection);
+                });
+            } catch (err) {
+                console.error("Camera error:", err);
+                statusElement.textContent = `Camera error: ${err.message}`;
+            }
+        });
+        
+        // Stop the scanner
+        stopButton.addEventListener('click', () => {
+            if (!isScanning) return;
+            
+            Quagga.stop();
+            isScanning = false;
+            
+            // Stop camera stream
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            // Update UI
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            flashButton.disabled = true;
+            scanButton.disabled = true;
+            statusElement.textContent = "Scanner stopped. Click 'Start Camera' to scan again.";
+        });
+        
+        // Checksum functions
+        function calculateChecksum(data, digits = VERIFICATION_DIGITS) {
+            const base = 10;
+            let sum = 0;
+            let factor = 2;
+            
+            const digitsArray = data.split('').map(Number);
+            
+            for (let i = digitsArray.length - 1; i >= 0; i--) {
+                let addend = digitsArray[i] * factor;
+                if (addend >= base) {
+                    addend = Math.floor(addend / base) + (addend % base);
+                }
+                sum += addend;
+                factor = factor === 2 ? 1 : 2;
+            }
+            
+            const remainder = sum % Math.pow(base, digits);
+            const checksum = (Math.pow(base, digits) - remainder) % Math.pow(base, digits);
+            
+            return checksum.toString().padStart(digits, '0');
+        }
+        
+        function verifyChecksum(fullCode, digits = VERIFICATION_DIGITS) {
+            if (fullCode.length <= digits) return false;
+            
+            const dataPart = fullCode.slice(0, -digits);
+            const checksumPart = fullCode.slice(-digits);
+            const calculatedChecksum = calculateChecksum(dataPart, digits);
+            
+            return {
+                isValid: checksumPart === calculatedChecksum,
+                data: dataPart,
+                checksum: checksumPart,
+                calculatedChecksum: calculatedChecksum
+            };
+        }
+        
+        // Handle barcode detection with verification
+        function handleBarcodeDetection(result) {
+            if (!result || !result.codeResult) return;
+            
+            const fullCode = result.codeResult.code;
+            const verification = verifyChecksum(fullCode);
+            
+            // Update checksum display
+            checksumContainer.style.display = 'block';
+            if (verification.isValid) {
+                checksumResult.innerHTML = `
+                    <span style="color: green;">✓ Valid (${VERIFICATION_DIGITS}-digit checksum)</span><br>
+                    Full code: ${fullCode}<br>
+                    Data: ${verification.data}<br>
+                    Checksum: ${verification.checksum}
+                `;
+                
+                // Track consecutive valid reads
+                if (lastValidCode === fullCode) {
+                    validFramesCount++;
+                } else {
+                    validFramesCount = 1;
+                    lastValidCode = fullCode;
+                }
+                
+                // If we have enough consecutive valid reads
+                if (validFramesCount >= VALIDATION_FRAMES_REQUIRED) {
+                    showVerificationSuccess(verification.data);
+                    return;
+                }
+            } else {
+                checksumResult.innerHTML = `
+                    <span style="color: red;">✗ Invalid checksum!</span><br>
+                    Full code: ${fullCode}<br>
+                    Expected checksum: ${verification.calculatedChecksum}<br>
+                    Found checksum: ${fullCode.slice(-VERIFICATION_DIGITS)}
+                `;
+                validFramesCount = 0;
+                lastValidCode = null;
+            }
+            
+            // Original processing continues if not verified yet
+            lastDetectedBarcode = result;
+            
+            // ... rest of your existing barcode handling code ...
+            // (Include your existing box detection and cropping logic here)
+        }
+        
+        function showVerificationSuccess(data) {
+            // Stop scanning
+            Quagga.stop();
+            isScanning = false;
+            
+            // Stop camera stream
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            // Update UI
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            flashButton.disabled = true;
+            scanButton.disabled = true;
+            
+            // Show success overlay
+            verificationOverlay.style.display = 'flex';
+            verifiedCode.textContent = data;
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+                verificationOverlay.style.display = 'none';
+            }, 3000);
+            
+            // Update status
+            statusElement.textContent = `Verified barcode: ${data}`;
+            
+            // Reset tracking
+            validFramesCount = 0;
+            lastValidCode = null;
+        }
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (isScanning) {
+                Quagga.stop();
+            }
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        });
+        
+        // (Include all your remaining existing functions here:
+        // handleProcessing, getBoundingBoxFromLocations, 
+        // cropBarcodeImage, cropBarcodeImageFromCanvas)
+    </script>
+</body>
+</html>
