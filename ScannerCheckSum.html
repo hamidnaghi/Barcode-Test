@@ -353,7 +353,7 @@
             // cropBarcodeImageFromCanvas]
             
             // Checksum functions
-            function calculateChecksum(data, digits = 2) {
+            function calculateChecksum(data, digits) {
                 let sum = 0;
                 
                 for (let i = 0; i < data.length; i++) {
@@ -389,7 +389,7 @@
                 const dataPart = fullCode.slice(0, -digits);
                 const checksumPart = fullCode.slice(-digits);
                 const calculatedChecksum = calculateChecksum(dataPart, digits);
-                statusElement.textContent = `Hamid found: ${calculatedChecksum} (verified)`;
+                statusElement.textContent = `Hamid found: ${calculatedChecksum} ${dataPart} (verified)`;
                 return {
                     isValid: checksumPart === calculatedChecksum,
                     data: dataPart,
