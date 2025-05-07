@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checksum Calculator</title>
+</head>
+<body>
+    <h1>Checksum Calculator</h1>
+    <p>Enter a data string and get the checksum.</p>
+
+    <!-- Input form -->
+    <label for="dataInput">Data:</label>
+    <input type="text" id="dataInput" placeholder="Enter data" />
+    <br><br>
+    
+    <label for="digitsInput">Checksum Digits:</label>
+    <input type="number" id="digitsInput" value="3" min="1" />
+    <br><br>
+
+    <button onclick="calculateAndShowChecksum()">Calculate Checksum</button>
+    <br><br>
+
+    <div id="result"></div>
+
+    <script>
+        // The checksum calculation function
+        function calculateChecksum(data, key = 's3cr3t', digits = 3) {
+            let hash = 0;
+
+            // Mix key into hash
+            for (let i = 0; i < key.length; i++) {
+                hash ^= key.charCodeAt(i) << (i % 8);
+            }
+
+            // Process data
+            for (let i = 0; i < data.length; i++) {
+                hash = ((hash << 5) - hash) + data.charCodeAt(i);
+                hash = hash & 0xFFFFFFFF; // force 32-bit
+            }
+
+            // Final checksum
+            const result = Math.abs(hash).toString().slice(-digits).padStart(digits, '0');
+            return result;
+        }
+
+        // Function to get data and show the checksum result
+        function calculateAndShowChecksum() {
+            const data = document.getElementById('dataInput').value;
+            const digits = parseInt(document.getElementById('digitsInput').value) || 3;
+            
+            if (data === '') {
+                document.getElementById('result').innerText = 'Please enter some data.';
+                return;
+            }
+
+            const checksum = calculateChecksum(data, 's3cr3t', digits);
+            document.getElementById('result').innerText = 'Checksum: ' + checksum;
+        }
+    </script>
+</body>
+</html>
