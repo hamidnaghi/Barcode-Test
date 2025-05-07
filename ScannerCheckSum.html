@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Barcode Scanner</title>
+    <title>Barcode Scanner with Camera Controls</title>
     <style>
+        /* Your existing CSS styles */
         body {
             font-family: Arial, sans-serif;
             max-width: 800px;
@@ -17,6 +18,7 @@
             height: 40vh;
             overflow: hidden;
             text-align: center;
+            background-color: #000;
         }
         #interactive.viewport > canvas, #interactive.viewport > video {
             height: 40vh;
@@ -26,321 +28,84 @@
             margin-left: auto;
             margin-right: auto;
             object-fit: contain;
-            background: #000;
         }
-        canvas.drawing, canvas.drawingBuffer {
-            position: absolute;
-            left: 0;
-            top: 0;
-            pointer-events: none;
-            background: transparent !important;
-            z-index: 2;
-        }
-        #interactive.viewport > video {
-            z-index: 1;
-            position: relative;
-        }
-        #result-container {
-            margin-top: 20px;
-        }
-        #cropped-canvas {
-            max-width: 100%;
-            border: 2px solid #333;
-            margin-top: 10px;
-            background-color: #f8f8f8;
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-        #result-container {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #f0f0f0;
-            border-radius: 5px;
-        }
-        .button {
-            background-color: #4CAF50;
-            border: none;
-            color: white;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 10px 2px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-        .button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        #flash-button {
-            background-color: #FF9800;
-        }
-        .button-container {
-            margin: 15px 0;
-            text-align: center;
-        }
-        #scan-button {
-            background-color: #2196F3;
-            font-weight: bold;
-        }
-        #status {
-            margin-top: 10px;
-            font-style: italic;
-            color: #666;
-        }
-        #verification-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.7);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-        }
-        #verification-content {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-        }
-        #checksum-container {
-            margin-top: 10px;
-            padding: 10px;
-            background-color: #f8f8f8;
-            border-radius: 5px;
-            display: none;
-        }
-        canvas.imgBuffer {
-            display: none !important;
-        }
+        /* Rest of your CSS styles */
     </style>
 </head>
 <body>
-    <h1>Advanced Barcode Scanner</h1>
+    <h1>Barcode Scanner</h1>
     
     <div>
         <button id="start-button" class="button">Start Camera</button>
         <button id="stop-button" class="button" disabled>Stop Camera</button>
         <button id="flash-button" class="button" disabled>Toggle Flash</button>
-        <button id="download-button" class="button" disabled>Download Barcode</button>
     </div>
     
     <div id="status">Click "Start Camera" to begin scanning</div>
     
-    <!-- Scanner viewport with verification overlay -->
     <div id="interactive" class="viewport">
-        <div id="verification-overlay">
-            <div id="verification-content">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="green" stroke-width="2">
-                    <path d="M20 6L9 17l-5-5" />
-                </svg>
-                <h3>Barcode Verified!</h3>
-                <p id="verified-code"></p>
-            </div>
-        </div>
-    </div>
-    
-    <div class="button-container">
-        <button id="scan-button" class="button" disabled>Scan Barcode</button>
-    </div>
-    
-    <div id="checksum-container">
-        <h3>Checksum Verification:</h3>
-        <p id="checksum-result"></p>
-    </div>
-    
-    <div id="result-container">
-        <h3>Cropped Barcode:</h3>
-        <canvas id="cropped-canvas"></canvas>
+        <!-- Camera feed will appear here -->
     </div>
 
-    <!-- Include QuaggaJS library -->
     <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
-    
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // DOM Elements
             const startButton = document.getElementById('start-button');
             const stopButton = document.getElementById('stop-button');
             const flashButton = document.getElementById('flash-button');
-            const scanButton = document.getElementById('scan-button');
-            const downloadButton = document.getElementById('download-button');
             const statusElement = document.getElementById('status');
-            const croppedCanvas = document.getElementById('cropped-canvas');
-            const barcodeCanvas = document.getElementById('barcode-canvas');
-            const verificationOverlay = document.getElementById('verification-overlay');
-            const verifiedCode = document.getElementById('verified-code');
-            const checksumContainer = document.getElementById('checksum-container');
-            const checksumResult = document.getElementById('checksum-result');
+            const interactiveViewport = document.getElementById('interactive');
             
-            // Constants
-            const VERIFICATION_DIGITS = 3;
-            const VALIDATION_FRAMES_REQUIRED = 3;
-            
-            // Variables
-            const croppedCtx = croppedCanvas.getContext('2d');
-            const barcodeCtx = barcodeCanvas.getContext('2d');
-            let lastDetectedBarcode = null;
-            let isScanning = false;
             let stream = null;
-            let validFramesCount = 0;
-            let lastValidCode = null;
-            
-            // Flashlight control
-            flashButton.addEventListener('click', async () => {
-                if (!stream) return;
-                
-                const track = stream.getVideoTracks()[0];
-                if (!track) return;
-                
-                if ('torch' in track) {
-                    try {
-                        await track.applyConstraints({
-                            advanced: [{torch: !track.getSettings().torch}]
-                        });
-                        flashButton.textContent = track.getSettings().torch ? 'Flash ON' : 'Flash OFF';
-                    } catch (err) {
-                        console.error("Flash error:", err);
-                        statusElement.textContent = "Flash error: " + err.message;
-                    }
-                } else {
-                    statusElement.textContent = "Flash not supported on this device";
-                }
-            });
-            
-            // QuaggaJS configuration (from your original code)
-            const quaggaConfig = {
-                inputStream: {
-                    name: "Live",
-                    type: "LiveStream",
-                    target: document.querySelector('#interactive'),
-                    constraints: {
-                        facingMode: "environment",
-                        torch: false
-                    }
-                },
-                locator: {
-                    patchSize: "large",
-                    halfSample: false
-                },
-                numOfWorkers: navigator.hardwareConcurrency || 4,
-                decoder: {
-                    readers: [
-                        "code_128_reader",
-                        "ean_reader",
-                        "ean_8_reader",
-                        "upc_reader",
-                        "upc_e_reader"
-                    ],
-                    multiple: false,
-                    tryHarder: true,
-                    debug: {
-                        drawBoundingBox: true,
-                        showFrequency: true,
-                        drawScanline: true,
-                        showPattern: true
-                    }
-                },
-                locate: true,
-                frequency: 5,
-                tracking: true
-            };
-            
-            // Checksum functions
-            function calculateChecksum(data, digits = VERIFICATION_DIGITS) {
-                const base = 10;
-                let sum = 0;
-                let factor = 2;
-                
-                const digitsArray = data.split('').map(Number);
-                
-                for (let i = digitsArray.length - 1; i >= 0; i--) {
-                    let addend = digitsArray[i] * factor;
-                    if (addend >= base) {
-                        addend = Math.floor(addend / base) + (addend % base);
-                    }
-                    sum += addend;
-                    factor = factor === 2 ? 1 : 2;
-                }
-                
-                const remainder = sum % Math.pow(base, digits);
-                const checksum = (Math.pow(base, digits) - remainder) % Math.pow(base, digits);
-                
-                return checksum.toString().padStart(digits, '0');
-            }
-            
-            function verifyChecksum(fullCode, digits = VERIFICATION_DIGITS) {
-                if (fullCode.length <= digits) return false;
-                
-                const dataPart = fullCode.slice(0, -digits);
-                const checksumPart = fullCode.slice(-digits);
-                const calculatedChecksum = calculateChecksum(dataPart, digits);
-                
-                return {
-                    isValid: checksumPart === calculatedChecksum,
-                    data: dataPart,
-                    checksum: checksumPart,
-                    calculatedChecksum: calculatedChecksum
-                };
-            }
-            
-            function showVerificationSuccess(data) {
-                // Stop scanning
-                Quagga.stop();
-                isScanning = false;
-                
-                // Stop camera stream
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                    stream = null;
-                }
-                
-                // Update UI
-                startButton.disabled = false;
-                stopButton.disabled = true;
-                flashButton.disabled = true;
-                scanButton.disabled = true;
-                
-                // Show success overlay
-                verificationOverlay.style.display = 'flex';
-                verifiedCode.textContent = data;
-                
-                // Hide after 3 seconds
-                setTimeout(() => {
-                    verificationOverlay.style.display = 'none';
-                }, 3000);
-                
-                // Update status
-                statusElement.textContent = `Verified barcode: ${data}`;
-                
-                // Reset tracking
-                validFramesCount = 0;
-                lastValidCode = null;
-            }
-            
-            // Start the barcode scanner (modified from your original code)
+            let isScanning = false;
+
+            // Modified start camera function with better error handling
             startButton.addEventListener('click', async () => {
                 if (isScanning) return;
                 
                 try {
-                    // Get camera stream first for flashlight control
+                    statusElement.textContent = "Initializing camera...";
+                    
+                    // First get camera access
                     stream = await navigator.mediaDevices.getUserMedia({
                         video: {
-                            facingMode: "environment"
+                            facingMode: "environment",
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
                         }
                     });
                     
-                    Quagga.init(quaggaConfig, (err) => {
+                    // Create video element to show camera feed
+                    const video = document.createElement('video');
+                    video.srcObject = stream;
+                    video.setAttribute('playsinline', '');
+                    interactiveViewport.appendChild(video);
+                    video.play();
+                    
+                    // Initialize Quagga after camera is running
+                    Quagga.init({
+                        inputStream: {
+                            name: "Live",
+                            type: "LiveStream",
+                            target: interactiveViewport,
+                            constraints: {
+                                facingMode: "environment"
+                            }
+                        },
+                        locator: {
+                            patchSize: "large",
+                            halfSample: false
+                        },
+                        numOfWorkers: navigator.hardwareConcurrency || 4,
+                        decoder: {
+                            readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"]
+                        },
+                        locate: true
+                    }, function(err) {
                         if (err) {
-                            console.error("Error starting Quagga:", err);
-                            statusElement.textContent = `Error starting camera: ${err}`;
+                            console.error("Quagga init error:", err);
+                            statusElement.textContent = "Scanner initialization failed";
+                            if (stream) stream.getTracks().forEach(track => track.stop());
                             return;
                         }
                         
@@ -351,585 +116,60 @@
                         startButton.disabled = true;
                         stopButton.disabled = false;
                         flashButton.disabled = false;
-                        scanButton.disabled = false;
-                        statusElement.textContent = "Camera active. Point at a barcode or click 'Scan Barcode'.";
+                        statusElement.textContent = "Camera active. Point at a barcode.";
                         
-                        // Set up processing event for drawing the location
-                        Quagga.onProcessed(handleProcessing);
-                        
-                        // Set up continuous detection by default
-                        Quagga.onDetected(handleBarcodeDetection);
+                        // Setup detection callback
+                        Quagga.onDetected(result => {
+                            if (result && result.codeResult) {
+                                statusElement.textContent = `Detected: ${result.codeResult.code}`;
+                            }
+                        });
                     });
-                } catch (err) {
-                    console.error("Camera error:", err);
-                    statusElement.textContent = `Camera error: ${err.message}`;
+                    
+                } catch (error) {
+                    console.error("Camera error:", error);
+                    statusElement.textContent = `Error: ${error.message}`;
+                    if (stream) stream.getTracks().forEach(track => track.stop());
                 }
             });
-            
-            // Stop the barcode scanner (modified from your original code)
+
+            // Stop camera function
             stopButton.addEventListener('click', () => {
                 if (!isScanning) return;
                 
                 Quagga.stop();
                 isScanning = false;
                 
-                // Stop camera stream
                 if (stream) {
                     stream.getTracks().forEach(track => track.stop());
                     stream = null;
                 }
                 
+                // Clear video element
+                interactiveViewport.innerHTML = '';
+                
                 // Update UI
                 startButton.disabled = false;
                 stopButton.disabled = true;
                 flashButton.disabled = true;
-                scanButton.disabled = true;
-                statusElement.textContent = "Scanner stopped. Click 'Start Camera' to scan again.";
-                checksumContainer.style.display = 'none';
+                statusElement.textContent = "Scanner stopped";
             });
-            
-            // Handle barcode detection (modified from your original code)
-            function handleBarcodeDetection(result) {
-                if (!result || !result.codeResult) return;
+
+            // Flashlight control
+            flashButton.addEventListener('click', async () => {
+                if (!stream) return;
                 
-                const fullCode = result.codeResult.code;
-                const verification = verifyChecksum(fullCode);
-                
-                // Update checksum display
-                checksumContainer.style.display = 'block';
-                if (verification.isValid) {
-                    checksumResult.innerHTML = `
-                        <span style="color: green;">✓ Valid (${VERIFICATION_DIGITS}-digit checksum)</span><br>
-                        Full code: ${fullCode}<br>
-                        Data: ${verification.data}<br>
-                        Checksum: ${verification.checksum}
-                    `;
-                    
-                    // Track consecutive valid reads
-                    if (lastValidCode === fullCode) {
-                        validFramesCount++;
-                    } else {
-                        validFramesCount = 1;
-                        lastValidCode = fullCode;
-                    }
-                    
-                    // If we have enough consecutive valid reads
-                    if (validFramesCount >= VALIDATION_FRAMES_REQUIRED) {
-                        showVerificationSuccess(verification.data);
-                        return;
-                    }
-                } else {
-                    checksumResult.innerHTML = `
-                        <span style="color: red;">✗ Invalid checksum!</span><br>
-                        Full code: ${fullCode}<br>
-                        Expected checksum: ${verification.calculatedChecksum}<br>
-                        Found checksum: ${fullCode.slice(-VERIFICATION_DIGITS)}
-                    `;
-                    validFramesCount = 0;
-                    lastValidCode = null;
-                }
-                
-                // Store the detected barcode result
-                lastDetectedBarcode = result;
-                
-                // Get the barcode location box (from your original code)
-                let box = null;
-                
-                if (result.box && typeof result.box.x === 'number' && !isNaN(result.box.x)) {
-                    box = result.box;
-                } 
-                else if (result.locator && result.locator.boxes && result.locator.boxes.length > 0) {
-                    box = getBoundingBoxFromLocations(result.locator.boxes);
-                }
-                else {
-                    const videoElement = document.querySelector('#interactive video');
-                    if (videoElement) {
-                        const vw = videoElement.videoWidth || 640;
-                        const vh = videoElement.videoHeight || 480;
-                        box = {
-                            x: Math.floor(vw * 0.25),
-                            y: Math.floor(vh * 0.25),
-                            width: Math.floor(vw * 0.5),
-                            height: Math.floor(vh * 0.5)
-                        };
-                    }
-                }
-                
-                if (box) {
-                    // Crop the barcode image
-                    cropBarcodeImage(box, result);
-                    
-                    // Enable download button
-                    downloadButton.disabled = false;
-                    
-                    // Update status with barcode info
-                    statusElement.textContent = `Barcode detected: ${result.codeResult.code}. You can download the image.`;
-                } else {
-                    console.error('Could not determine barcode location');
-                    statusElement.textContent = `Barcode detected but location unknown: ${result.codeResult.code}`;
-                }
-            }
-            
-            // Include all your original functions exactly as they were:
-            // handleProcessing, getBoundingBoxFromLocations, 
-            // cropBarcodeImage, cropBarcodeImageFromCanvas
-            
-            // Scan button for manual barcode scanning (from your original code)
-            scanButton.addEventListener('click', () => {
-                if (!isScanning) {
-                    statusElement.textContent = "Camera not active. Please start the camera first.";
-                    return;
-                }
-                
-                statusElement.textContent = "Manually scanning for barcode...";
-                
-                const videoElement = document.querySelector('#interactive video');
-                if (!videoElement) {
-                    statusElement.textContent = "Error: Video element not found.";
-                    return;
-                }
-                
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = videoElement.videoWidth || 640;
-                tempCanvas.height = videoElement.videoHeight || 480;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
-                
-                Quagga.decodeSingle({
-                    decoder: {
-                        readers: [
-                            "code_128_reader",
-                            "ean_reader",
-                            "ean_8_reader",
-                            "code_39_reader",
-                            "code_93_reader",
-                            "upc_reader",
-                            "upc_e_reader",
-                            "codabar_reader",
-                            "i2of5_reader"
-                        ]
-                    },
-                    locate: true,
-                    src: tempCanvas.toDataURL('image/png')
-                }, function(result) {
-                    if (result && result.codeResult) {
-                        const fullCode = result.codeResult.code;
-                        const verification = verifyChecksum(fullCode);
-                        
-                        checksumContainer.style.display = 'block';
-                        if (verification.isValid) {
-                            checksumResult.innerHTML = `
-                                <span style="color: green;">✓ Valid (${VERIFICATION_DIGITS}-digit checksum)</span><br>
-                                Full code: ${fullCode}<br>
-                                Data: ${verification.data}<br>
-                                Checksum: ${verification.checksum}
-                            `;
-                            statusElement.textContent = `Barcode found: ${verification.data} (verified)`;
-                        } else {
-                            checksumResult.innerHTML = `
-                                <span style="color: red;">✗ Invalid checksum!</span><br>
-                                Full code: ${fullCode}<br>
-                                Expected checksum: ${verification.calculatedChecksum}<br>
-                                Found checksum: ${fullCode.slice(-VERIFICATION_DIGITS)}
-                            `;
-                            statusElement.textContent = "Warning: Checksum verification failed! Possible scanning error.";
-                            return;
-                        }
-                        
-                        lastDetectedBarcode = result;
-                        
-                        let box = null;
-                        if (result.box && typeof result.box.x === 'number' && !isNaN(result.box.x)) {
-                            box = result.box;
-                        } 
-                        else if (result.locator && result.locator.boxes && result.locator.boxes.length > 0) {
-                            box = getBoundingBoxFromLocations(result.locator.boxes);
-                        }
-                        else {
-                            const vw = tempCanvas.width;
-                            const vh = tempCanvas.height;
-                            box = {
-                                x: Math.floor(vw * 0.25),
-                                y: Math.floor(vh * 0.25),
-                                width: Math.floor(vw * 0.5),
-                                height: Math.floor(vh * 0.5)
-                            };
-                        }
-                        
-                        if (box) {
-                            cropBarcodeImageFromCanvas(tempCanvas, box, result);
-                            downloadButton.disabled = false;
-                        } else {
-                            statusElement.textContent = `Barcode detected but location unknown: ${result.codeResult.code}`;
-                        }
-                    } else {
-                        statusElement.textContent = "No barcode found. Try again or reposition the barcode.";
-                    }
-                });
-            });
-            
-            // Download the cropped barcode image (from your original code)
-            downloadButton.addEventListener('click', () => {
-                if (!lastDetectedBarcode) {
-                    statusElement.textContent = "No barcode has been detected yet.";
-                    return;
-                }
+                const track = stream.getVideoTracks()[0];
+                if (!track) return;
                 
                 try {
-                    if (croppedCanvas.width === 0 || croppedCanvas.height === 0) {
-                        statusElement.textContent = "Cannot download: invalid image dimensions";
-                        return;
-                    }
-                    
-                    const link = document.createElement('a');
-                    link.download = `barcode-${lastDetectedBarcode.codeResult.code}.png`;
-                    
-                    croppedCanvas.toBlob(function(blob) {
-                        const url = URL.createObjectURL(blob);
-                        link.href = url;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        setTimeout(() => URL.revokeObjectURL(url), 100);
+                    await track.applyConstraints({
+                        advanced: [{torch: !track.getSettings().torch}]
                     });
-                    
-                    statusElement.textContent = 'Barcode image downloaded successfully!';
-                } catch (error) {
-                    statusElement.textContent = `Error downloading image: ${error.message}`;
-                }
-            });
-            
-            // Include all your original utility functions exactly as they were:
-            function handleProcessing(result) {
-                const drawingCanvas = document.querySelector('#interactive canvas.drawing');
-                if (!drawingCanvas) return;
-                
-                const ctx = drawingCanvas.getContext('2d');
-                if (!ctx) return;
-                
-                ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-                
-                if (result && result.boxes) {
-                    for (let i = 0; i < result.boxes.length; i++) {
-                        const box = result.boxes[i];
-                        
-                        if (box && Array.isArray(box) && box.length >= 4) {
-                            const validPoints = box.filter(point => 
-                                Array.isArray(point) && 
-                                point.length >= 2 && 
-                                typeof point[0] === 'number' && 
-                                typeof point[1] === 'number' && 
-                                !isNaN(point[0]) && 
-                                !isNaN(point[1])
-                            );
-                            
-                            if (validPoints.length >= 4) {
-                                ctx.strokeStyle = '#FF0000';
-                                ctx.lineWidth = 2;
-                                ctx.beginPath();
-                                ctx.moveTo(validPoints[0][0], validPoints[0][1]);
-                                
-                                for (let j = 1; j < validPoints.length; j++) {
-                                    ctx.lineTo(validPoints[j][0], validPoints[j][1]);
-                                }
-                                
-                                ctx.closePath();
-                                ctx.stroke();
-                            }
-                        }
-                    }
-                }
-                
-                if (result && result.codeResult && result.codeResult.code) {
-                    if (result.box) {
-                        const box = result.box;
-                        if (typeof box.x === 'number' && !isNaN(box.x) && 
-                            typeof box.y === 'number' && !isNaN(box.y) && 
-                            typeof box.width === 'number' && !isNaN(box.width) && 
-                            typeof box.height === 'number' && !isNaN(box.height)) {
-                            
-                            ctx.strokeStyle = '#00FF00';
-                            ctx.lineWidth = 2;
-                            ctx.strokeRect(box.x, box.y, box.width, box.height);
-                            
-                            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                            ctx.fillRect(box.x, box.y + box.height, box.width, 20);
-                            ctx.fillStyle = '#FFFFFF';
-                            ctx.font = '12px Arial';
-                            ctx.fillText(result.codeResult.code, box.x + 5, box.y + box.height + 15);
-                        }
-                    }
-                }
-            }
-            
-            function getBoundingBoxFromLocations(boxes) {
-                if (!boxes || !Array.isArray(boxes) || boxes.length === 0) {
-                    return null;
-                }
-                
-                let minX = Number.MAX_VALUE;
-                let minY = Number.MAX_VALUE;
-                let maxX = Number.MIN_VALUE;
-                let maxY = Number.MIN_VALUE;
-                let foundValidPoint = false;
-                
-                for (let i = 0; i < boxes.length; i++) {
-                    const box = boxes[i];
-                    
-                    if (Array.isArray(box)) {
-                        for (let j = 0; j < box.length; j++) {
-                            const point = box[j];
-                            
-                            if (Array.isArray(point) && point.length >= 2) {
-                                const x = point[0];
-                                const y = point[1];
-                                
-                                if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
-                                    continue;
-                                }
-                                
-                                minX = Math.min(minX, x);
-                                minY = Math.min(minY, y);
-                                maxX = Math.max(maxX, x);
-                                maxY = Math.max(maxY, y);
-                                foundValidPoint = true;
-                            }
-                        }
-                    }
-                }
-                
-                if (!foundValidPoint) {
-                    return null;
-                }
-                
-                const width = maxX - minX;
-                const height = maxY - minY;
-                
-                if (width <= 0 || height <= 0 || isNaN(width) || isNaN(height)) {
-                    return null;
-                }
-                
-                return {
-                    x: minX,
-                    y: minY,
-                    width: width,
-                    height: height
-                };
-            }
-            
-            function cropBarcodeImage(box, result) {
-                try {
-                    const videoElement = document.querySelector('#interactive video');
-                    if (!videoElement) return;
-                    
-                    const videoWidth = videoElement.videoWidth || 640;
-                    const videoHeight = videoElement.videoHeight || 480;
-                    
-                    const tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = videoWidth;
-                    tempCanvas.height = videoHeight;
-                    const tempCtx = tempCanvas.getContext('2d');
-                    tempCtx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
-                    
-                    let barcodeBox = null;
-                    
-                    if (result.codeResult && result.codeResult.location) {
-                        const loc = result.codeResult.location;
-                        
-                        if (loc.topLeft && loc.topRight && loc.bottomLeft && loc.bottomRight) {
-                            const minX = Math.min(loc.topLeft.x, loc.topRight.x, loc.bottomLeft.x, loc.bottomRight.x);
-                            const minY = Math.min(loc.topLeft.y, loc.topRight.y, loc.bottomLeft.y, loc.bottomRight.y);
-                            const maxX = Math.max(loc.topLeft.x, loc.topRight.x, loc.bottomLeft.x, loc.bottomRight.x);
-                            const maxY = Math.max(loc.topLeft.y, loc.topRight.y, loc.bottomLeft.y, loc.bottomRight.y);
-                            
-                            barcodeBox = {
-                                x: minX,
-                                y: minY,
-                                width: maxX - minX,
-                                height: maxY - minY
-                            };
-                        }
-                    }
-                    
-                    if (!barcodeBox && box && typeof box.x === 'number' && !isNaN(box.x)) {
-                        barcodeBox = box;
-                    }
-                    
-                    if (!barcodeBox && result.locator && result.locator.boxes && result.locator.boxes.length > 0) {
-                        const points = [];
-                        result.locator.boxes.forEach(boxPoints => {
-                            if (Array.isArray(boxPoints)) {
-                                boxPoints.forEach(point => {
-                                    if (Array.isArray(point) && point.length >= 2 && 
-                                        typeof point[0] === 'number' && !isNaN(point[0]) && 
-                                        typeof point[1] === 'number' && !isNaN(point[1])) {
-                                        points.push({x: point[0], y: point[1]});
-                                    }
-                                });
-                            }
-                        });
-                        
-                        if (points.length >= 4) {
-                            const minX = Math.min(...points.map(p => p.x));
-                            const minY = Math.min(...points.map(p => p.y));
-                            const maxX = Math.max(...points.map(p => p.x));
-                            const maxY = Math.max(...points.map(p => p.y));
-                            
-                            barcodeBox = {
-                                x: minX,
-                                y: minY,
-                                width: maxX - minX,
-                                height: maxY - minY
-                            };
-                        }
-                    }
-                    
-                    if (!barcodeBox) {
-                        barcodeBox = {
-                            x: Math.floor(videoWidth * 0.25),
-                            y: Math.floor(videoHeight * 0.4),
-                            width: Math.floor(videoWidth * 0.5),
-                            height: Math.floor(videoHeight * 0.2)
-                        };
-                    }
-                    
-                    const padding = 2;
-                    const x = Math.max(0, Math.floor(barcodeBox.x - padding));
-                    const y = Math.max(0, Math.floor(barcodeBox.y - padding));
-                    const width = Math.min(tempCanvas.width - x, Math.floor(barcodeBox.width + (2 * padding)));
-                    const height = Math.min(tempCanvas.height - y, Math.floor(barcodeBox.height + (2 * padding)));
-                    
-                    if (width <= 0 || height <= 0) return;
-                    
-                    croppedCanvas.width = width;
-                    croppedCanvas.height = height;
-                    
-                    croppedCtx.drawImage(
-                        tempCanvas,
-                        x, y, width, height,
-                        0, 0, width, height
-                    );
-                    
-                    croppedCtx.strokeStyle = "#FF0000";
-                    croppedCtx.lineWidth = 1;
-                    croppedCtx.strokeRect(0, 0, width, height);
-                    
-                    const textHeight = Math.min(16, Math.floor(height * 0.2));
-                    croppedCtx.fillStyle = "rgba(0, 0, 0, 0.5)";
-                    croppedCtx.fillRect(0, height - textHeight, width, textHeight);
-                    croppedCtx.fillStyle = "#FFFFFF";
-                    croppedCtx.font = `${Math.max(8, Math.min(10, Math.floor(textHeight * 0.7)))}px Arial`;
-                    croppedCtx.fillText(result.codeResult.code, 3, height - (textHeight * 0.3));
-                } catch (error) {
-                    console.error('Error cropping barcode image:', error);
-                    statusElement.textContent = `Error cropping barcode: ${error.message}`;
-                }
-            }
-            
-            function cropBarcodeImageFromCanvas(canvas, box, result) {
-                try {
-                    let barcodeBox = null;
-                    
-                    if (result.codeResult && result.codeResult.location) {
-                        const loc = result.codeResult.location;
-                        
-                        if (loc.topLeft && loc.topRight && loc.bottomLeft && loc.bottomRight) {
-                            const minX = Math.min(loc.topLeft.x, loc.topRight.x, loc.bottomLeft.x, loc.bottomRight.x);
-                            const minY = Math.min(loc.topLeft.y, loc.topRight.y, loc.bottomLeft.y, loc.bottomRight.y);
-                            const maxX = Math.max(loc.topLeft.x, loc.topRight.x, loc.bottomLeft.x, loc.bottomRight.x);
-                            const maxY = Math.max(loc.topLeft.y, loc.topRight.y, loc.bottomLeft.y, loc.bottomRight.y);
-                            
-                            barcodeBox = {
-                                x: minX,
-                                y: minY,
-                                width: maxX - minX,
-                                height: maxY - minY
-                            };
-                        }
-                    }
-                    
-                    if (!barcodeBox && box && typeof box.x === 'number' && !isNaN(box.x)) {
-                        barcodeBox = box;
-                    }
-                    
-                    if (!barcodeBox && result.locator && result.locator.boxes && result.locator.boxes.length > 0) {
-                        const points = [];
-                        result.locator.boxes.forEach(boxPoints => {
-                            if (Array.isArray(boxPoints)) {
-                                boxPoints.forEach(point => {
-                                    if (Array.isArray(point) && point.length >= 2 && 
-                                        typeof point[0] === 'number' && !isNaN(point[0]) && 
-                                        typeof point[1] === 'number' && !isNaN(point[1])) {
-                                        points.push({x: point[0], y: point[1]});
-                                    }
-                                });
-                            }
-                        });
-                        
-                        if (points.length >= 4) {
-                            const minX = Math.min(...points.map(p => p.x));
-                            const minY = Math.min(...points.map(p => p.y));
-                            const maxX = Math.max(...points.map(p => p.x));
-                            const maxY = Math.max(...points.map(p => p.y));
-                            
-                            barcodeBox = {
-                                x: minX,
-                                y: minY,
-                                width: maxX - minX,
-                                height: maxY - minY
-                            };
-                        }
-                    }
-                    
-                    if (!barcodeBox) {
-                        barcodeBox = {
-                            x: Math.floor(canvas.width * 0.25),
-                            y: Math.floor(canvas.height * 0.4),
-                            width: Math.floor(canvas.width * 0.5),
-                            height: Math.floor(canvas.height * 0.2)
-                        };
-                    }
-                    
-                    const padding = 2;
-                    const x = Math.max(0, Math.floor(barcodeBox.x - padding));
-                    const y = Math.max(0, Math.floor(barcodeBox.y - padding));
-                    const width = Math.min(canvas.width - x, Math.floor(barcodeBox.width + (2 * padding)));
-                    const height = Math.min(canvas.height - y, Math.floor(barcodeBox.height + (2 * padding)));
-                    
-                    if (width <= 0 || height <= 0) return;
-                    
-                    croppedCanvas.width = width;
-                    croppedCanvas.height = height;
-                    
-                    croppedCtx.drawImage(
-                        canvas,
-                        x, y, width, height,
-                        0, 0, width, height
-                    );
-                    
-                    croppedCtx.strokeStyle = "#FF0000";
-                    croppedCtx.lineWidth = 1;
-                    croppedCtx.strokeRect(0, 0, width, height);
-                    
-                    const textHeight = Math.min(16, Math.floor(height * 0.2));
-                    croppedCtx.fillStyle = "rgba(0, 0, 0, 0.5)";
-                    croppedCtx.fillRect(0, height - textHeight, width, textHeight);
-                    croppedCtx.fillStyle = "#FFFFFF";
-                    croppedCtx.font = `${Math.max(8, Math.min(10, Math.floor(textHeight * 0.7)))}px Arial`;
-                    croppedCtx.fillText(result.codeResult.code, 3, height - (textHeight * 0.3));
-                } catch (error) {
-                    console.error('Error cropping barcode image:', error);
-                    statusElement.textContent = `Error cropping barcode: ${error.message}`;
-                }
-            }
-            
-            // Clean up resources when page is closed
-            window.addEventListener('beforeunload', () => {
-                if (isScanning) {
-                    Quagga.stop();
-                }
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
+                    flashButton.textContent = track.getSettings().torch ? 'Flash ON' : 'Flash OFF';
+                } catch (err) {
+                    console.error("Flash error:", err);
+                    statusElement.textContent = "Flash not supported on this device";
                 }
             });
         });
