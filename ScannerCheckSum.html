@@ -384,7 +384,7 @@
             }
             
             function verifyChecksum(fullCode, digits = VERIFICATION_DIGITS) {
-                if (fullCode.length <= digits) return false;
+           <!--     if (fullCode.length <= digits) return false; -->
                 
                 const dataPart = fullCode.slice(0, -digits);
                 const checksumPart = fullCode.slice(-digits);
