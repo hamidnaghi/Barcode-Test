@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Sequence with Text & Sound</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .image-container {
+            margin: 20px 0;
+        }
+        .image-container img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 400px;
+        }
+        .caption {
+            margin-top: 10px;
+            font-size: 18px;
+            min-height: 50px;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+        #modalSound {
+            width: 100%;
+            margin-top: 20px;
+        }
+        .progress-container {
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .progress-bar {
+            height: 10px;
+            background-color: #4CAF50;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image Sequence Demo with 3 Sample Sets</h1>
+    
+    <div class="image-container">
+        <img id="currentImage" src="" alt="Sequence Image">
+        <div id="currentCaption" class="caption">Loading...</div>
+    </div>
+    
+    <div class="progress-container">
+        <div id="progressBar" class="progress-bar"></div>
+    </div>
+    
+    <div class="controls">
+        <button id="playPauseBtn">Pause</button>
+        <button id="prevBtn" disabled>Previous</button>
+        <button id="nextBtn">Next</button>
+        <button id="openModalBtn">Play Sound</button>
+    </div>
+    
+    <div id="soundModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Now Playing</h2>
+            <p id="modalTitle">Audio for current slide</p>
+            <audio id="modalSound" controls>
+                Your browser does not support the audio element.
+            </audio>
+        </div>
+    </div>
+
+    <!-- Embedded sample images as data URIs -->
+    <script>
+        // Sample 1: Forest
+        const image1 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNjAwIDQwMCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzAwNjYwMCIvPjxjaXJjbGUgY3g9IjMwMCIgY3k9IjEwMCIgcj0iNTAiIGZpbGw9IiNGRkMxMDciLz48cmVjdCB4PSIyMDAiIHk9IjIwMCIgd2lkdGg9IjIwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiM4QjQ1MTIiLz48L3N2Zz4=";
+        const text1 = "A peaceful forest scene with a bright sun and brown tree trunks";
+        const audio1 = "data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU..."; // Short beep sound
+
+        // Sample 2: Beach
+        const image2 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNjAwIDQwMCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzAwQkZGRiIvPjxyZWN0IHk9IjMwMCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwIiBmaWxsPSIjRkZDMTA3Ii8+PGNpcmNsZSBjeD0iNTAwIiBjeT0iMTAwIiByPSI3MCIgZmlsbD0iI0ZGQzEwNyIvPjwvc3ZnPg==";
+        const text2 = "Beautiful beach with blue water and golden sand under a setting sun";
+        const audio2 = "data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU..."; // Different beep
+
+        // Sample 3: Mountains
+        const image3 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNjAwIDQwMCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzAwQkZGRiIvPjxwb2x5Z29uIHBvaW50cz0iMzAwLDEwMCAxMDAsMzAwIDUwMCwzMDAiIGZpbGw9IiNGRkZGRkYiIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLXdpZHRoPSIyIi8+PC9zdmc+";
+        const text3 = "Snow-capped mountains against a clear blue sky";
+        const audio3 = "data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU..."; // Third beep
+
+        // Sequence configuration
+        const imageSequence = [
+            { image: image1, text: text1, audio: audio1 },
+            { image: image2, text: text2, audio: audio2 },
+            { image: image3, text: text3, audio: audio3 }
+        ];
+        
+        const transitionTime = 3000; // 3 seconds per slide
+        
+        // State variables
+        let currentIndex = 0;
+        let isPlaying = true;
+        let intervalId = null;
+        
+        // DOM elements
+        const currentImage = document.getElementById('currentImage');
+        const currentCaption = document.getElementById('currentCaption');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const openModalBtn = document.getElementById('openModalBtn');
+        const progressBar = document.getElementById('progressBar');
+        const modalSound = document.getElementById('modalSound');
+        const modalTitle = document.getElementById('modalTitle');
+        const modal = document.getElementById('soundModal');
+        const closeBtn = document.getElementsByClassName('close')[0];
+        
+        // Show a specific slide
+        function showSlide(index) {
+            currentIndex = index;
+            const slide = imageSequence[index];
+            
+            currentImage.src = slide.image;
+            currentCaption.textContent = slide.text;
+            
+            // Update modal sound source
+            modalSound.src = slide.audio;
+            modalTitle.textContent = `Audio for Slide ${index + 1}`;
+            
+            // Update button states
+            prevBtn.disabled = index === 0;
+            nextBtn.disabled = index === imageSequence.length - 1;
+            
+            // Reset progress bar
+            progressBar.style.width = '0%';
+        }
+        
+        // Start auto-play
+        function startAutoPlay() {
+            if (intervalId) clearInterval(intervalId);
+            
+            intervalId = setInterval(() => {
+                if (currentIndex < imageSequence.length - 1) {
+                    currentIndex++;
+                } else {
+                    currentIndex = 0; // Loop back to start
+                }
+                showSlide(currentIndex);
+            }, transitionTime);
+            
+            // Animate progress bar
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 1;
+                progressBar.style.width = progress + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                }
+            }, transitionTime / 100);
+        }
+        
+        // Pause auto-play
+        function pauseAutoPlay() {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+        }
+        
+        // Toggle play/pause
+        function togglePlayPause() {
+            isPlaying = !isPlaying;
+            
+            if (isPlaying) {
+                startAutoPlay();
+                playPauseBtn.textContent = 'Pause';
+            } else {
+                pauseAutoPlay();
+                playPauseBtn.textContent = 'Play';
+            }
+        }
+        
+        // Event listeners
+        prevBtn.addEventListener('click', () => {
+            if (currentIndex > 0) {
+                pauseAutoPlay();
+                showSlide(currentIndex - 1);
+                if (isPlaying) startAutoPlay();
+            }
+        });
+        
+        nextBtn.addEventListener('click', () => {
+            if (currentIndex < imageSequence.length - 1) {
+                pauseAutoPlay();
+                showSlide(currentIndex + 1);
+                if (isPlaying) startAutoPlay();
+            }
+        });
+        
+        playPauseBtn.addEventListener('click', togglePlayPause);
+        
+        openModalBtn.addEventListener('click', () => {
+            modal.style.display = 'block';
+            modalSound.currentTime = 0;
+            modalSound.play().catch(e => console.log("Autoplay prevented:", e));
+        });
+        
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+            modalSound.pause();
+        });
+        
+        window.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+                modalSound.pause();
+            }
+        });
+        
+        // Initialize
+        showSlide(0);
+        startAutoPlay();
+    </script>
+</body>
+</html>
