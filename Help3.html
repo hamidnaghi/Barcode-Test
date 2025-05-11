@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate Image Sequence Viewer</title>
+    <style>
+        :root {
+            --primary-color: #4CAF50;
+            --hover-color: #45a049;
+            --disabled-color: #cccccc;
+            --progress-color: #4CAF50;
+            --text-color: #333;
+            --bg-color: #f9f9f9;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            touch-action: pan-y;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 25px;
+            color: var(--primary-color);
+        }
+        
+        .viewer-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .image-container {
+            position: relative;
+            margin: 0 auto;
+            width: 100%;
+            height: 450px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f0f0f0;
+            border-radius: 8px;
+        }
+        
+        .slide-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: all 0.5s ease;
+            position: absolute;
+        }
+        
+        /* Transition effects */
+        .fade-out { opacity: 0; }
+        .slide-left { transform: translateX(-100%); }
+        .slide-right { transform: translateX(100%); }
+        .zoom-out { transform: scale(0.8); opacity: 0; }
+        
+        .caption {
+            margin: 15px 0;
+            font-size: 18px;
+            min-height: 50px;
+            text-align: center;
+            padding: 10px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 5px;
+        }
+        
+        .progress-container {
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+            margin: 20px 0;
+            position: relative;
+            height: 12px;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background-color: var(--progress-color);
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        
+        .slide-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        
+        .slide-counter, .timer-display {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            min-width: 100px;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: var(--hover-color);
+        }
+        
+        button:disabled {
+            background-color: var(--disabled-color);
+            cursor: not-allowed;
+        }
+        
+        .settings-panel {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 8px;
+        }
+        
+        .setting-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        select, input[type="range"] {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            backdrop-filter: blur(3px);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 10% auto;
+            padding: 25px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        
+        .close {
+            position: absolute;
+            right: 20px;
+            top: 15px;
+            font-size: 28px;
+            font-weight: bold;
+            color: #aaa;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: #333;
+        }
+        
+        .audio-controls {
+            margin-top: 20px;
+        }
+        
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        /* Fullscreen styles */
+        :fullscreen .viewer-container {
+            width: 100%;
+            height: 100%;
+            max-width: none;
+            border-radius: 0;
+        }
+        
+        :fullscreen .image-container {
+            height: 80vh;
+        }
+        
+        /* Loading indicator */
+        .loader {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid var(--primary-color);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+        /* Error message */
+        .error-message {
+            color: #d32f2f;
+            text-align: center;
+            margin: 10px 0;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Ultimate Image Sequence Viewer</h1>
+    
+    <div class="settings-panel">
+        <div class="setting-group">
+            <label for="transitionType">Transition Effect:</label>
+            <select id="transitionType">
+                <option value="fade">Fade</option>
+                <option value="slide">Slide</option>
+                <option value="zoom">Zoom</option>
+                <option value="none">None</option>
+            </select>
+        </div>
+        
+        <div class="setting-group">
+            <label for="slideDuration">Slide Duration (seconds):</label>
+            <input type="range" id="slideDuration" min="1" max="10" value="3" step="0.5">
+            <span id="durationValue">3</span> seconds
+        </div>
+    </div>
+    
+    <div class="error-message" id="errorMessage"></div>
+    
+    <div class="viewer-container">
+        <div class="slide-info">
+            <div class="slide-counter">Slide: <span id="currentSlide">1</span>/<span id="totalSlides">0</span></div>
+            <div class="timer-display">Next in: <span id="countdown">0</span>s</div>
+        </div>
+        
+        <div class="progress-container">
+            <div id="progressBar" class="progress-bar"></div>
+        </div>
+        
+        <div class="image-container">
+            <div class="loader" id="loader"></div>
+            <img id="currentImage" class="slide-image" src="" alt="Slide image">
+            <img id="nextImage" class="slide-image" src="" alt="Next slide" style="opacity: 0;">
+        </div>
+        
+        <div id="currentCaption" class="caption">Loading slides...</div>
+    </div>
+    
+    <div class="controls">
+        <button id="playPauseBtn">Pause</button>
+        <button id="prevBtn" disabled>Previous</button>
+        <button id="nextBtn" disabled>Next</button>
+        <button id="openModalBtn">Play Sound</button>
+        <button id="fullscreenBtn">Fullscreen</button>
+    </div>
+    
+    <div id="soundModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Audio Player</h2>
+            <p id="modalTitle">Slide Audio</p>
+            <div class="audio-controls">
+                <audio id="modalSound" controls>
+                    Your browser does not support the audio element.
+                </audio>
+                <div class="volume-control">
+                    <label for="volumeSlider">Volume:</label>
+                    <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="0.7">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration - EDIT THESE TO MATCH YOUR FILES
+        const imageFiles = [
+            "image1.jpg",
+            "image2.jpg",
+            "image3.jpg"
+            // Add more images as needed
+        ];
+        
+        // State variables
+        let currentIndex = 0;
+        let isPlaying = true;
+        let intervalId = null;
+        let countdownId = null;
+        let transitionTime = 3000; // Initial 3 seconds
+        let currentTransition = 'fade';
+        let captions = [];
+        let audioFiles = [];
+        let preloadedImages = [];
+        let isPreloading = false;
+        
+        // DOM elements
+        const elements = {
+            currentImage: document.getElementById('currentImage'),
+            nextImage: document.getElementById('nextImage'),
+            currentCaption: document.getElementById('currentCaption'),
+            prevBtn: document.getElementById('prevBtn'),
+            nextBtn: document.getElementById('nextBtn'),
+            playPauseBtn: document.getElementById('playPauseBtn'),
+            openModalBtn: document.getElementById('openModalBtn'),
+            fullscreenBtn: document.getElementById('fullscreenBtn'),
+            progressBar: document.getElementById('progressBar'),
+            modalSound: document.getElementById('modalSound'),
+            modalTitle: document.getElementById('modalTitle'),
+            modal: document.getElementById('soundModal'),
+            closeBtn: document.getElementsByClassName('close')[0],
+            countdown: document.getElementById('countdown'),
+            currentSlide: document.getElementById('currentSlide'),
+            totalSlides: document.getElementById('totalSlides'),
+            volumeSlider: document.getElementById('volumeSlider'),
+            transitionType: document.getElementById('transitionType'),
+            slideDuration: document.getElementById('slideDuration'),
+            durationValue: document.getElementById('durationValue'),
+            loader: document.getElementById('loader'),
+            errorMessage: document.getElementById('errorMessage')
+        };
+        
+        // Initialize the application
+        async function init() {
+            setupEventListeners();
+            await loadResources();
+            updateSlideCounter();
+            showSlide(currentIndex);
+            if (isPlaying) startAutoPlay();
+        }
+        
+        // Load all required resources
+        async function loadResources() {
+            try {
+                showLoading(true);
+                
+                // Load text files
+                captions = await Promise.all(
+                    imageFiles.map(img => loadTextFile(img.replace(/\.[^/.]+$/, "") + ".txt"))
+                );
+                
+                // Generate audio file names
+                audioFiles = imageFiles.map(img => img.replace(/\.[^/.]+$/, "") + ".mp3");
+                
+                // Preload images
+                await preloadImages();
+                
+                showError(false);
+            } catch (error) {
+                console.error("Error loading resources:", error);
+                showError(true, "Error loading resources. Please check your files.");
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        // Preload all images for smoother transitions
+        async function preloadImages() {
+            isPreloading = true;
+            preloadedImages = [];
+            
+            for (const img of imageFiles) {
+                try {
+                    await new Promise((resolve) => {
+                        const image = new Image();
+                        image.src = img;
+                        image.onload = () => {
+                            preloadedImages.push(img);
+                            resolve();
+                        };
+                        image.onerror = () => {
+                            console.warn(`Failed to load image: ${img}`);
+                            preloadedImages.push(img); // Still add to array but will fail when displayed
+                            resolve();
+                        };
+                    });
+                } catch (error) {
+                    console.error(`Error preloading image ${img}:`, error);
+                }
+            }
+            
+            isPreloading = false;
+        }
+        
+        // Load text file content
+        async function loadTextFile(filename) {
+            try {
+                const response = await fetch(filename);
+                if (!response.ok) throw new Error("File not found");
+                return await response.text();
+            } catch (error) {
+                console.error(`Error loading ${filename}:`, error);
+                return `Description for ${filename.replace('.txt', '')}`;
+            }
+        }
+        
+        // Show or hide loading indicator
+        function showLoading(show) {
+            elements.loader.style.display = show ? 'block' : 'none';
+        }
+        
+        // Show or hide error message
+        function showError(show, message = "") {
+            elements.errorMessage.style.display = show ? 'block' : 'none';
+            if (show) elements.errorMessage.textContent = message;
+        }
+        
+        // Update the slide counter display
+        function updateSlideCounter() {
+            elements.currentSlide.textContent = currentIndex + 1;
+            elements.totalSlides.textContent = imageFiles.length;
+        }
+        
+        // Apply transition effect between slides
+        async function applyTransition(newIndex, direction = 'next') {
+            if (isPreloading) {
+                console.warn("Images still preloading, transition may not be smooth");
+                showSlideContent(newIndex);
+                return;
+            }
+            
+            const currentImg = elements.currentImage;
+            const nextImg = elements.nextImage;
+            
+            // Preload next image
+            nextImg.src = imageFiles[newIndex];
+            nextImg.style.opacity = '0';
+            
+            // Wait for next image to load
+            await new Promise(resolve => {
+                if (nextImg.complete) {
+                    resolve();
+                } else {
+                    nextImg.onload = resolve;
+                    nextImg.onerror = resolve;
+                }
+            });
+            
+            // Apply transition based on selected type
+            switch(currentTransition) {
+                case 'fade':
+                    currentImg.classList.add('fade-out');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                case 'slide':
+                    currentImg.classList.add(direction === 'next' ? 'slide-left' : 'slide-right');
+                    nextImg.style.transform = direction === 'next' ? 'translateX(100%)' : 'translateX(-100%)';
+                    nextImg.style.opacity = '1';
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                case 'zoom':
+                    currentImg.classList.add('zoom-out');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                default:
+                    showSlideContent(newIndex);
+                    break;
+            }
+        }
+        
+        // Show slide content (without transition)
+        function showSlideContent(index) {
+            try {
+                currentIndex = index;
+                
+                // Swap image elements for transitions
+                const temp = elements.currentImage.src;
+                elements.currentImage.src = elements.nextImage.src;
+                elements.nextImage.src = temp;
+                
+                // Reset styles
+                elements.currentImage.classList.remove('fade-out', 'slide-left', 'slide-right', 'zoom-out');
+                elements.currentImage.style.opacity = '1';
+                elements.currentImage.style.transform = 'none';
+                elements.nextImage.style.opacity = '0';
+                elements.nextImage.style.transform = 'none';
+                
+                // Update caption
+                elements.currentCaption.textContent = captions[index] || `Description for ${imageFiles[index]}`;
+                
+                // Update audio source
+                elements.modalSound.src = audioFiles[index];
+                elements.modalTitle.textContent = `Audio for Slide ${index + 1}`;
+                
+                // Update UI
+                updateSlideCounter();
+                updateButtonStates();
+                
+                // Reset progress bar
+                elements.progressBar.style.width = '0%';
+            } catch (error) {
+                console.error("Error showing slide content:", error);
+                showError(true, "Error displaying slide. Please check your files.");
+            }
+        }
+        
+        // Show a specific slide with transition
+        function showSlide(index, direction = 'next') {
+            if (index < 0 || index >= imageFiles.length) return;
+            
+            pauseAutoPlay();
+            applyTransition(index, direction);
+            if (isPlaying) {
+                startAutoPlay();
+            }
+        }
+        
+        // Start auto-play
+        function startAutoPlay() {
+            clearTimers();
+            
+            // Start countdown timer
+            let secondsRemaining = transitionTime / 1000;
+            updateCountdown(secondsRemaining);
+            
+            countdownId = setInterval(() => {
+                secondsRemaining--;
+                updateCountdown(secondsRemaining);
+                
+                if (secondsRemaining <= 0) {
+                    clearInterval(countdownId);
+                }
+            }, 1000);
+            
+            // Start slide transition timer
+            intervalId = setInterval(() => {
+                if (currentIndex < imageFiles.length - 1) {
+                    showSlide(currentIndex + 1, 'next');
+                } else {
+                    showSlide(0, 'next'); // Loop back to start
+                }
+            }, transitionTime);
+            
+            // Animate progress bar
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 1;
+                elements.progressBar.style.width = progress + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                }
+            }, transitionTime / 100);
+        }
+        
+        // Update countdown display
+        function updateCountdown(seconds) {
+            elements.countdown.textContent = Math.max(0, seconds);
+        }
+        
+        // Clear all timers
+        function clearTimers() {
+            if (intervalId) clearInterval(intervalId);
+            if (countdownId) clearInterval(countdownId);
+            intervalId = null;
+            countdownId = null;
+            updateCountdown(0);
+        }
+        
+        // Pause auto-play
+        function pauseAutoPlay() {
+            clearTimers();
+        }
+        
+        // Toggle play/pause state
+        function togglePlayPause() {
+            isPlaying = !isPlaying;
+            
+            if (isPlaying) {
+                startAutoPlay();
+                elements.playPauseBtn.textContent = 'Pause';
+            } else {
+                pauseAutoPlay();
+                elements.playPauseBtn.textContent = 'Play';
+            }
+        }
+        
+        // Update button states based on current index
+        function updateButtonStates() {
+            elements.prevBtn.disabled = currentIndex === 0;
+            elements.nextBtn.disabled = currentIndex === imageFiles.length - 1;
+        }
+        
+        // Toggle fullscreen mode
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.error(`Error entering fullscreen: ${err.message}`);
+                });
+                elements.fullscreenBtn.textContent = 'Exit Fullscreen';
+            } else {
+                document.exitFullscreen();
+                elements.fullscreenBtn.textContent = 'Fullscreen';
+            }
+        }
+        
+        // Handle touch events for swipe navigation
+        function setupTouchEvents() {
+            let touchStartX = 0;
+            let touchEndX = 0;
+            const threshold = 50; // Minimum swipe distance in pixels
+            
+            document.addEventListener('touchstart', e => {
+                touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+            
+            document.addEventListener('touchend', e => {
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe();
+            }, { passive: true });
+            
+            function handleSwipe() {
+                if (touchEndX < touchStartX - threshold) {
+                    // Swipe left - next slide
+                    if (currentIndex < imageFiles.length - 1) {
+                        showSlide(currentIndex + 1, 'next');
+                    }
+                } else if (touchEndX > touchStartX + threshold) {
+                    // Swipe right - previous slide
+                    if (currentIndex > 0) {
+                        showSlide(currentIndex - 1, 'prev');
+                    }
+                }
+            }
+        }
+        
+        // Handle keyboard shortcuts
+        function setupKeyboardEvents() {
+            document.addEventListener('keydown', (e) => {
+                // Ignore if focused on interactive element
+                if (document.activeElement.tagName === 'INPUT' || 
+                    document.activeElement.tagName === 'SELECT' || 
+                    document.activeElement.tagName === 'BUTTON') {
+                    return;
+                }
+                
+                switch(e.key) {
+                    case 'ArrowLeft':
+                        if (currentIndex > 0) {
+                            showSlide(currentIndex - 1, 'prev');
+                        }
+                        break;
+                    case 'ArrowRight':
+                    case ' ':
+                        if (currentIndex < imageFiles.length - 1) {
+                            showSlide(currentIndex + 1, 'next');
+                        }
+                        break;
+                    case 'p':
+                        togglePlayPause();
+                        break;
+                    case 'f':
+                        toggleFullscreen();
+                        break;
+                    case 'm':
+                        toggleModal();
+                        break;
+                }
+            });
+        }
+        
+        // Toggle audio modal
+        function toggleModal() {
+            if (elements.modal.style.display === 'block') {
+                elements.modal.style.display = 'none';
+                elements.modalSound.pause();
+            } else {
+                elements.modal.style.display = 'block';
+                elements.modalSound.currentTime = 0;
+                elements.modalSound.play().catch(e => console.log("Autoplay prevented:", e));
+            }
+        }
+        
+        // Set up all event listeners
+        function setupEventListeners() {
+            // Button events
+            elements.prevBtn.addEventListener('click', () => {
+                if (currentIndex > 0) {
+                    showSlide(currentIndex - 1, 'prev');
+                }
+            });
+            
+            elements.nextBtn.addEventListener('click', () => {
+                if (currentIndex < imageFiles.length - 1) {
+                    showSlide(currentIndex + 1, 'next');
+                }
+            });
+            
+            elements.playPauseBtn.addEventListener('click', togglePlayPause);
+            elements.openModalBtn.addEventListener('click', toggleModal);
+            elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
+            
+            // Modal events
+            elements.closeBtn.addEventListener('click', () => {
+                elements.modal.style.display = 'none';
+                elements.modalSound.pause();
+            });
+            
+            window.addEventListener('click', (event) => {
+                if (event.target === elements.modal) {
+                    elements.modal.style.display = 'none';
+                    elements.modalSound.pause();
+                }
+            });
+            
+            // Volume control
+            elements.volumeSlider.addEventListener('input', (e) => {
+                elements.modalSound.volume = e.target.value;
+            });
+            
+            // Transition type selector
+            elements.transitionType.addEventListener('change', (e) => {
+                currentTransition = e.target.value;
+            });
+            
+            // Slide duration control
+            elements.slideDuration.addEventListener('input', (e) => {
+                transitionTime = e.target.value * 1000;
+                elements.durationValue.textContent = e.target.value;
+                if (isPlaying) {
+                    pauseAutoPlay();
+                    startAutoPlay();
+                }
+            });
+            
+            // Fullscreen change handler
+            document.addEventListener('fullscreenchange', () => {
+                elements.fullscreenBtn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
+            });
+            
+            // Setup additional controls
+            setupTouchEvents();
+            setupKeyboardEvents();
+        }
+        
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
