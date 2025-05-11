@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presentation Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .editor-container {
+            display: flex;
+            gap: 20px;
+        }
+        .preview-pane {
+            flex: 1;
+            position: relative;
+            border: 1px solid #ccc;
+            height: 500px;
+        }
+        .edit-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        #previewImage {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .pointer {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            cursor: move;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .point-controls {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Presentation Editor</h1>
+    
+    <div class="editor-container">
+        <div class="preview-pane" id="previewPane">
+            <img id="previewImage" src="" alt="Preview">
+            <div class="pointer" id="pointer" style="display: none;"></div>
+        </div>
+        
+        <div class="edit-pane">
+            <div>
+                <label>Media File: <input type="file" id="mediaFile"></label>
+                <label>Audio File: <input type="file" id="audioFile"></label>
+            </div>
+            
+            <label>Caption:
+                <textarea id="captionText"></textarea>
+            </label>
+            
+            <div class="point-controls">
+                <h3>Pointer Path</h3>
+                <button id="addPointBtn">Add Point</button>
+                <button id="removePointBtn">Remove Last Point</button>
+                
+                <table id="pointsTable">
+                    <thead>
+                        <tr>
+                            <th>X</th>
+                            <th>Y</th>
+                            <th>Wait (ms)</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            
+            <div class="controls">
+                <button id="prevSlideBtn">Previous Slide</button>
+                <button id="nextSlideBtn">Next Slide</button>
+                <button id="saveBtn">Save Presentation</button>
+                <button id="loadBtn">Load Presentation</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Current presentation data
+        let presentation = {
+            slides: [],
+            currentSlideIndex: 0
+        };
+
+        // DOM elements
+        const elements = {
+            previewPane: document.getElementById('previewPane'),
+            previewImage: document.getElementById('previewImage'),
+            pointer: document.getElementById('pointer'),
+            mediaFile: document.getElementById('mediaFile'),
+            audioFile: document.getElementById('audioFile'),
+            captionText: document.getElementById('captionText'),
+            addPointBtn: document.getElementById('addPointBtn'),
+            removePointBtn: document.getElementById('removePointBtn'),
+            pointsTable: document.getElementById('pointsTable').querySelector('tbody'),
+            prevSlideBtn: document.getElementById('prevSlideBtn'),
+            nextSlideBtn: document.getElementById('nextSlideBtn'),
+            saveBtn: document.getElementById('saveBtn'),
+            loadBtn: document.getElementById('loadBtn')
+        };
+
+        // Initialize
+        function init() {
+            // Add first empty slide
+            addNewSlide();
+            
+            // Set up event listeners
+            setupEventListeners();
+        }
+
+        function setupEventListeners() {
+            // Media file selection
+            elements.mediaFile.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        elements.previewImage.src = event.target.result;
+                        presentation.slides[presentation.currentSlideIndex].media = file.name;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+
+            // Audio file selection
+            elements.audioFile.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    presentation.slides[presentation.currentSlideIndex].audio = file.name;
+                }
+            });
+
+            // Caption editing
+            elements.captionText.addEventListener('input', function() {
+                presentation.slides[presentation.currentSlideIndex].caption = this.value;
+            });
+
+            // Add point button
+            elements.addPointBtn.addEventListener('click', function() {
+                const slide = presentation.slides[presentation.currentSlideIndex];
+                slide.pointerPath.push({ x: 50, y: 50, wait: 3000 });
+                updatePointsTable();
+            });
+
+            // Remove point button
+            elements.removePointBtn.addEventListener('click', function() {
+                const slide = presentation.slides[presentation.currentSlideIndex];
+                if (slide.pointerPath.length > 0) {
+                    slide.pointerPath.pop();
+                    updatePointsTable();
+                }
+            });
+
+            // Preview pane click for adding points
+            elements.previewPane.addEventListener('click', function(e) {
+                if (e.target === elements.previewImage) {
+                    const rect = elements.previewImage.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    
+                    const slide = presentation.slides[presentation.currentSlideIndex];
+                    slide.pointerPath.push({ 
+                        x: Math.round(x), 
+                        y: Math.round(y), 
+                        wait: 3000 
+                    });
+                    updatePointsTable();
+                }
+            });
+
+            // Navigation buttons
+            elements.prevSlideBtn.addEventListener('click', prevSlide);
+            elements.nextSlideBtn.addEventListener('click', nextSlide);
+
+            // Save/Load buttons
+            elements.saveBtn.addEventListener('click', savePresentation);
+            elements.loadBtn.addEventListener('click', loadPresentation);
+        }
+
+        function addNewSlide() {
+            presentation.slides.push({
+                media: '',
+                audio: '',
+                caption: '',
+                pointerPath: []
+            });
+            presentation.currentSlideIndex = presentation.slides.length - 1;
+            updateUI();
+        }
+
+        function updateUI() {
+            const slide = presentation.slides[presentation.currentSlideIndex];
+            
+            // Update media preview
+            elements.previewImage.src = slide.media ? slide.media : '';
+            
+            // Update form fields
+            elements.captionText.value = slide.caption;
+            
+            // Update points table
+            updatePointsTable();
+        }
+
+        function updatePointsTable() {
+            const slide = presentation.slides[presentation.currentSlideIndex];
+            elements.pointsTable.innerHTML = '';
+            
+            slide.pointerPath.forEach((point, index) => {
+                const row = document.createElement('tr');
+                
+                // X position
+                const xCell = document.createElement('td');
+                const xInput = document.createElement('input');
+                xInput.type = 'number';
+                xInput.value = point.x;
+                xInput.addEventListener('change', function() {
+                    point.x = parseInt(this.value);
+                });
+                xCell.appendChild(xInput);
+                
+                // Y position
+                const yCell = document.createElement('td');
+                const yInput = document.createElement('input');
+                yInput.type = 'number';
+                yInput.value = point.y;
+                yInput.addEventListener('change', function() {
+                    point.y = parseInt(this.value);
+                });
+                yCell.appendChild(yInput);
+                
+                // Wait time
+                const waitCell = document.createElement('td');
+                const waitInput = document.createElement('input');
+                waitInput.type = 'number';
+                waitInput.value = point.wait;
+                waitInput.addEventListener('change', function() {
+                    point.wait = parseInt(this.value);
+                });
+                waitCell.appendChild(waitInput);
+                
+                // Actions
+                const actionsCell = document.createElement('td');
+                const previewBtn = document.createElement('button');
+                previewBtn.textContent = 'Preview';
+                previewBtn.addEventListener('click', function() {
+                    previewPoint(point);
+                });
+                actionsCell.appendChild(previewBtn);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.addEventListener('click', function() {
+                    slide.pointerPath.splice(index, 1);
+                    updatePointsTable();
+                });
+                actionsCell.appendChild(deleteBtn);
+                
+                // Build row
+                row.appendChild(xCell);
+                row.appendChild(yCell);
+                row.appendChild(waitCell);
+                row.appendChild(actionsCell);
+                
+                elements.pointsTable.appendChild(row);
+            });
+        }
+
+        function previewPoint(point) {
+            const rect = elements.previewImage.getBoundingClientRect();
+            const containerRect = elements.previewPane.getBoundingClientRect();
+            
+            const xPos = (point.x / 100) * rect.width;
+            const yPos = (point.y / 100) * rect.height;
+            
+            const pointerX = containerRect.left + xPos;
+            const pointerY = containerRect.top + yPos;
+            
+            elements.pointer.style.left = `${pointerX}px`;
+            elements.pointer.style.top = `${pointerY}px`;
+            elements.pointer.style.display = 'block';
+            
+            setTimeout(() => {
+                elements.pointer.style.display = 'none';
+            }, 2000);
+        }
+
+        function prevSlide() {
+            if (presentation.currentSlideIndex > 0) {
+                presentation.currentSlideIndex--;
+                updateUI();
+            }
+        }
+
+        function nextSlide() {
+            if (presentation.currentSlideIndex < presentation.slides.length - 1) {
+                presentation.currentSlideIndex++;
+                updateUI();
+            } else {
+                addNewSlide();
+            }
+        }
+
+        function savePresentation() {
+            const dataStr = JSON.stringify(presentation.slides, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'presentation.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function loadPresentation() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            
+            input.onchange = e => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.readAsText(file, 'UTF-8');
+                
+                reader.onload = readerEvent => {
+                    try {
+                        const content = readerEvent.target.result;
+                        presentation.slides = JSON.parse(content);
+                        presentation.currentSlideIndex = 0;
+                        updateUI();
+                    } catch (error) {
+                        alert('Error loading file: ' + error.message);
+                    }
+                };
+            };
+            
+            input.click();
+        }
+
+        // Initialize the editor
+        init();
+    </script>
+</body>
+</html>
