@@ -43,7 +43,7 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             overflow: hidden;
         }
-        .media-content {
+        #currentMedia {
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
@@ -60,6 +60,7 @@
             transition: left 3s ease, top 3s ease;
             border: 2px solid white;
             box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            will-change: left, top;
         }
         .caption {
             text-align: center;
@@ -237,9 +238,11 @@
             // Update UI
             updateUI();
             
-            // If playing, start the sequence
+            // If playing, start the sequence after image loads
             if (presentation.isPlaying) {
-                startSequence();
+                elements.currentMedia.onload = function() {
+                    startSequence();
+                };
             }
         }
 
@@ -276,78 +279,89 @@
             });
         }
 
-    function animatePointer(path) {
-        if (!path || path.length === 0) return;
-        
-        elements.pointer.style.display = 'block';
-        let currentPoint = 0;
-        
-        function moveToNextPoint() {
-            if (currentPoint >= path.length) return;
+        function animatePointer(path) {
+            if (!path || path.length === 0) return;
             
-            const point = path[currentPoint];
             const img = elements.currentMedia;
+            const container = img.parentElement;
+            elements.pointer.style.display = 'block';
+            let currentPoint = 0;
+            
+            function moveToNextPoint() {
+                if (currentPoint >= path.length) return;
+                
+                const point = path[currentPoint];
+                const imgRect = img.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                
+                // Calculate the actual displayed image area
+                const imgRatio = img.naturalWidth / img.naturalHeight;
+                const containerRatio = containerRect.width / containerRect.height;
+                
+                let displayedWidth, displayedHeight, offsetX, offsetY;
+                
+                if (imgRatio > containerRatio) {
+                    displayedWidth = containerRect.width;
+                    displayedHeight = containerRect.width / imgRatio;
+                    offsetX = 0;
+                    offsetY = (containerRect.height - displayedHeight) / 2;
+                } else {
+                    displayedHeight = containerRect.height;
+                    displayedWidth = containerRect.height * imgRatio;
+                    offsetX = (containerRect.width - displayedWidth) / 2;
+                    offsetY = 0;
+                }
+                
+                // Calculate position accounting for letterboxing
+                const xPos = offsetX + (point.x / 100) * displayedWidth;
+                const yPos = offsetY + (point.y / 100) * displayedHeight;
+                
+                // Position pointer relative to container
+                elements.pointer.style.left = `${xPos}px`;
+                elements.pointer.style.top = `${yPos}px`;
+                
+                currentPoint++;
+                
+                if (currentPoint < path.length) {
+                    presentation.timers.push(setTimeout(moveToNextPoint, path[currentPoint].wait));
+                }
+            }
+            
+            // Initialize first position
+            const firstPoint = path[0];
             const imgRect = img.getBoundingClientRect();
-            const containerRect = elements.currentMedia.parentElement.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
             
-            // Calculate the actual displayed image dimensions (may be scaled)
-            const scale = Math.min(
-                containerRect.width / img.naturalWidth,
-                containerRect.height / img.naturalHeight
-            );
-            const displayedWidth = img.naturalWidth * scale;
-            const displayedHeight = img.naturalHeight * scale;
+            // Recalculate displayed area
+            const imgRatio = img.naturalWidth / img.naturalHeight;
+            const containerRatio = containerRect.width / containerRect.height;
             
-            // Calculate the offset (centering)
-            const offsetX = (containerRect.width - displayedWidth) / 2;
-            const offsetY = (containerRect.height - displayedHeight) / 2;
+            let displayedWidth, displayedHeight, offsetX, offsetY;
             
-            // Calculate position
-            const xPos = offsetX + (point.x / 100) * displayedWidth;
-            const yPos = offsetY + (point.y / 100) * displayedHeight;
+            if (imgRatio > containerRatio) {
+                displayedWidth = containerRect.width;
+                displayedHeight = containerRect.width / imgRatio;
+                offsetX = 0;
+                offsetY = (containerRect.height - displayedHeight) / 2;
+            } else {
+                displayedHeight = containerRect.height;
+                displayedWidth = containerRect.height * imgRatio;
+                offsetX = (containerRect.width - displayedWidth) / 2;
+                offsetY = 0;
+            }
             
-            // Move pointer
+            const xPos = offsetX + (firstPoint.x / 100) * displayedWidth;
+            const yPos = offsetY + (firstPoint.y / 100) * displayedHeight;
+            
+            elements.pointer.style.transition = 'none';
             elements.pointer.style.left = `${xPos}px`;
             elements.pointer.style.top = `${yPos}px`;
+            void elements.pointer.offsetWidth; // Force reflow
+            elements.pointer.style.transition = 'left 3s ease, top 3s ease';
             
-            currentPoint++;
-            
-            if (currentPoint < path.length) {
-                presentation.timers.push(setTimeout(moveToNextPoint, path[currentPoint].wait));
-            }
+            // Start moving
+            presentation.timers.push(setTimeout(moveToNextPoint, firstPoint.wait));
         }
-        
-        // Initialize first position
-        const firstPoint = path[0];
-        const img = elements.currentMedia;
-        const imgRect = img.getBoundingClientRect();
-        const containerRect = elements.currentMedia.parentElement.getBoundingClientRect();
-        
-        // Calculate the actual displayed image dimensions (may be scaled)
-        const scale = Math.min(
-            containerRect.width / img.naturalWidth,
-            containerRect.height / img.naturalHeight
-        );
-        const displayedWidth = img.naturalWidth * scale;
-        const displayedHeight = img.naturalHeight * scale;
-        
-        // Calculate the offset (centering)
-        const offsetX = (containerRect.width - displayedWidth) / 2;
-        const offsetY = (containerRect.height - displayedHeight) / 2;
-        
-        // Calculate position
-        const xPos = offsetX + (firstPoint.x / 100) * displayedWidth;
-        const yPos = offsetY + (firstPoint.y / 100) * displayedHeight;
-        
-        elements.pointer.style.transition = 'none';
-        elements.pointer.style.left = `${xPos}px`;
-        elements.pointer.style.top = `${yPos}px`;
-        void elements.pointer.offsetWidth; // Force reflow
-        elements.pointer.style.transition = 'left 3s ease, top 3s ease';
-        
-        // Start moving
-        presentation.timers.push(setTimeout(moveToNextPoint, firstPoint.wait));
-    }
 
         function nextSlide() {
             if (presentation.currentIndex < presentation.slides.length - 1) {
