@@ -453,24 +453,36 @@
             elements.removePointBtn.disabled = slide.pointerPath.length === 0;
         }
 
-        function previewPoint(point) {
-            const rect = elements.previewImage.getBoundingClientRect();
-            const containerRect = elements.previewPane.getBoundingClientRect();
-            
-            const xPos = (point.x / 100) * rect.width;
-            const yPos = (point.y / 100) * rect.height;
-            
-            const pointerX = containerRect.left + xPos;
-            const pointerY = containerRect.top + yPos;
-            
-            elements.pointer.style.left = `${pointerX}px`;
-            elements.pointer.style.top = `${pointerY}px`;
-            elements.pointer.style.display = 'block';
-            
-            setTimeout(() => {
-                elements.pointer.style.display = 'none';
-            }, 2000);
-        }
+    function previewPoint(point) {
+        const img = elements.previewImage;
+        const imgRect = img.getBoundingClientRect();
+        const containerRect = elements.previewPane.getBoundingClientRect();
+        
+        // Calculate the actual displayed image dimensions (may be scaled)
+        const scale = Math.min(
+            containerRect.width / img.naturalWidth,
+            containerRect.height / img.naturalHeight
+        );
+        const displayedWidth = img.naturalWidth * scale;
+        const displayedHeight = img.naturalHeight * scale;
+        
+        // Calculate the offset (centering)
+        const offsetX = (containerRect.width - displayedWidth) / 2;
+        const offsetY = (containerRect.height - displayedHeight) / 2;
+        
+        // Calculate position
+        const xPos = offsetX + (point.x / 100) * displayedWidth;
+        const yPos = offsetY + (point.y / 100) * displayedHeight;
+        
+        elements.pointer.style.left = `${xPos}px`;
+        elements.pointer.style.top = `${yPos}px`;
+        elements.pointer.style.display = 'block';
+        
+        setTimeout(() => {
+            elements.pointer.style.display = 'none';
+        }, 2000);
+    }
+
 
         function prevSlide() {
             if (presentation.currentSlideIndex > 0) {
