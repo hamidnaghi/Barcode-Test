@@ -133,7 +133,17 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
-                    presentation.slides = JSON.parse(e.target.result);
+                    const loadedData = JSON.parse(e.target.result);
+                    
+                    // Handle both old format (array) and new format (object)
+                    if (Array.isArray(loadedData)) {
+                        presentation.slides = loadedData;
+                    } else if (loadedData.slides) {
+                        presentation.slides = loadedData.slides;
+                    } else {
+                        throw new Error("Invalid presentation format");
+                    }
+                    
                     presentation.currentIndex = 0;
                     loadSlide();
                 } catch (error) {
