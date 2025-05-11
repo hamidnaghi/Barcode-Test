@@ -344,7 +344,14 @@
         }
 
         function savePresentation() {
-            const dataStr = JSON.stringify(presentation.slides, null, 2);
+            // Prepare the complete presentation data
+            const presentationData = {
+                slides: presentation.slides,
+                version: "1.0",
+                created: new Date().toISOString()
+            };
+
+            const dataStr = JSON.stringify(presentationData, null, 2);
             const blob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             
@@ -370,7 +377,17 @@
                 reader.onload = readerEvent => {
                     try {
                         const content = readerEvent.target.result;
-                        presentation.slides = JSON.parse(content);
+                        const loadedData = JSON.parse(content);
+                        
+                        // Handle both old format (array) and new format (object)
+                        if (Array.isArray(loadedData)) {
+                            presentation.slides = loadedData;
+                        } else if (loadedData.slides) {
+                            presentation.slides = loadedData.slides;
+                        } else {
+                            throw new Error("Invalid presentation format");
+                        }
+                        
                         presentation.currentSlideIndex = 0;
                         updateUI();
                     } catch (error) {
@@ -382,8 +399,7 @@
             input.click();
         }
 
-        // Initialize the editor
-        init();
+        // [Keep the rest of the JavaScript the same]
     </script>
 </body>
 </html>
