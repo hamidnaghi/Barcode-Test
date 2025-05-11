@@ -6,83 +6,132 @@
     <title>Presentation Player</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             max-width: 900px;
             margin: 0 auto;
             padding: 20px;
+            background-color: #f5f5f5;
         }
-        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .file-selector {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .file-selector label {
+            font-weight: 600;
+            color: #34495e;
+            margin-right: 10px;
+        }
         .media-container {
             position: relative;
             width: 100%;
             height: 500px;
-            background: #f1f1f1;
+            background: #f9f9f9;
             display: flex;
             align-items: center;
             justify-content: center;
             margin-bottom: 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            overflow: hidden;
         }
-        
         .media-content {
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
         }
-        
         .pointer {
             position: absolute;
-            width: 20px;
-            height: 20px;
-            background-color: red;
+            width: 24px;
+            height: 24px;
+            background-color: #e74c3c;
             border-radius: 50%;
             transform: translate(-50%, -50%);
             z-index: 10;
             display: none;
             transition: left 3s ease, top 3s ease;
+            border: 2px solid white;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
         }
-        
-        .controls {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        
-        .error {
-            color: red;
-            text-align: center;
-            margin: 20px 0;
-            display: none;
-        }
-
-        audio {
-            width: 100%;
-            margin-top: 20px;
-        }
-        
         .caption {
             text-align: center;
             margin-bottom: 20px;
             font-size: 1.2em;
+            padding: 15px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        
-        .file-selector {
-            margin-bottom: 20px;
+        audio {
+            width: 100%;
+            margin: 20px 0;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            min-width: 100px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        #playPauseBtn.playing {
+            background-color: #2ecc71;
+        }
+        #playPauseBtn.playing:hover {
+            background-color: #27ae60;
+        }
+        .slide-counter {
             text-align: center;
+            margin: 10px 0;
+            font-weight: 500;
+            color: #7f8c8d;
+        }
+        .error {
+            color: #e74c3c;
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background: #fde8e8;
+            border-radius: 4px;
+            display: none;
         }
     </style>
 </head>
 <body>
+    <h1>Presentation Player</h1>
+    
     <div class="file-selector">
-        <label>Select Presentation File: 
-            <input type="file" id="presentationFile" accept=".json">
-        </label>
+        <label for="presentationFile">Select Presentation File:</label>
+        <input type="file" id="presentationFile" accept=".json">
+    </div>
+    
+    <div class="slide-counter">
+        Slide <span id="currentSlideNumber">0</span> of <span id="totalSlides">0</span>
     </div>
     
     <div class="media-container">
@@ -90,7 +139,7 @@
         <div class="pointer" id="pointer"></div>
     </div>
     
-    <div id="currentCaption" class="caption"></div>
+    <div id="currentCaption" class="caption">No presentation loaded</div>
     
     <audio id="currentAudio" controls></audio>
     
@@ -121,7 +170,9 @@
             prevBtn: document.getElementById('prevBtn'),
             nextBtn: document.getElementById('nextBtn'),
             playPauseBtn: document.getElementById('playPauseBtn'),
-            errorMessage: document.getElementById('errorMessage')
+            errorMessage: document.getElementById('errorMessage'),
+            currentSlideNumber: document.getElementById('currentSlideNumber'),
+            totalSlides: document.getElementById('totalSlides')
         };
 
         // Initialize the player
@@ -145,9 +196,13 @@
                     }
                     
                     presentation.currentIndex = 0;
+                    updateUI();
                     loadSlide();
+                    
+                    // Hide error if previously shown
+                    showError(false);
                 } catch (error) {
-                    showError("Error parsing presentation file: " + error.message);
+                    showError("Error loading presentation: " + error.message);
                 }
             };
             reader.readAsText(file);
@@ -177,7 +232,7 @@
             };
             
             // Load caption
-            elements.currentCaption.textContent = slide.caption;
+            elements.currentCaption.textContent = slide.caption || '';
             
             // Update UI
             updateUI();
@@ -193,13 +248,15 @@
             
             // Start playing audio
             const audioPromise = elements.currentAudio.play().catch(e => {
-                showError("Audio playback failed. Please interact with the page first.");
+                showError("Audio playback failed. Please click the play button.");
                 console.error("Audio playback error:", e);
+                presentation.isPlaying = false;
+                updateUI();
                 return Promise.reject(e);
             });
             
             // Start pointer animation
-            animatePointer(slide.pointerPath);
+            animatePointer(slide.pointerPath || []);
             
             // When audio is ready, set up the transition
             audioPromise.then(() => {
@@ -212,7 +269,7 @@
                 }, audioDuration));
             }).catch(() => {
                 // Fallback to pointer path timing if audio fails
-                const pointerDuration = slide.pointerPath.reduce((sum, point) => sum + point.wait + 3000, 0);
+                const pointerDuration = (slide.pointerPath || []).reduce((sum, point) => sum + point.wait + 3000, 0) || 5000;
                 presentation.timers.push(setTimeout(() => {
                     nextSlide();
                 }, pointerDuration));
@@ -292,10 +349,8 @@
             presentation.isPlaying = !presentation.isPlaying;
             
             if (presentation.isPlaying) {
-                elements.playPauseBtn.textContent = 'Pause';
                 startSequence();
             } else {
-                elements.playPauseBtn.textContent = 'Play';
                 elements.currentAudio.pause();
                 clearTimers();
             }
@@ -310,17 +365,32 @@
         }
 
         function showError(message) {
+            if (message === false) {
+                elements.errorMessage.style.display = 'none';
+                return;
+            }
+            
             elements.errorMessage.textContent = message;
             elements.errorMessage.style.display = 'block';
-            setTimeout(() => {
-                elements.errorMessage.style.display = 'none';
-            }, 5000);
         }
 
         function updateUI() {
-            elements.playPauseBtn.textContent = presentation.isPlaying ? 'Pause' : 'Play';
-            elements.prevBtn.disabled = presentation.currentIndex === 0;
-            elements.nextBtn.disabled = presentation.currentIndex === presentation.slides.length - 1;
+            // Update play/pause button
+            if (presentation.isPlaying) {
+                elements.playPauseBtn.textContent = 'Pause';
+                elements.playPauseBtn.classList.add('playing');
+            } else {
+                elements.playPauseBtn.textContent = 'Play';
+                elements.playPauseBtn.classList.remove('playing');
+            }
+            
+            // Update navigation buttons
+            elements.prevBtn.disabled = presentation.currentIndex === 0 || presentation.slides.length === 0;
+            elements.nextBtn.disabled = presentation.currentIndex === presentation.slides.length - 1 || presentation.slides.length === 0;
+            
+            // Update slide counter
+            elements.currentSlideNumber.textContent = presentation.slides.length > 0 ? presentation.currentIndex + 1 : 0;
+            elements.totalSlides.textContent = presentation.slides.length || 0;
         }
 
         function setupEventListeners() {
