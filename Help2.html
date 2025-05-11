@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Image Sequence Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+            touch-action: pan-y; /* Better touch control */
+        }
+        
+        .image-container {
+            margin: 20px 0;
+            position: relative;
+            overflow: hidden;
+            min-height: 400px;
+        }
+        
+        .image-container img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 400px;
+            transition: opacity 0.5s, transform 0.5s; /* For animations */
+        }
+        
+        .caption {
+            margin-top: 10px;
+            font-size: 18px;
+            min-height: 50px;
+        }
+        
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            min-width: 100px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        .progress-container {
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+            margin: 20px 0;
+            position: relative;
+        }
+        
+        .progress-bar {
+            height: 10px;
+            background-color: #4CAF50;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        
+        .timer-display {
+            position: absolute;
+            right: 10px;
+            top: -25px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .slide-counter {
+            position: absolute;
+            left: 10px;
+            top: -25px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 10;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: black;
+        }
+        
+        .volume-controls {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        /* Animation classes */
+        .fade-out {
+            opacity: 0;
+        }
+        
+        .slide-left {
+            transform: translateX(-100%);
+        }
+        
+        .slide-right {
+            transform: translateX(100%);
+        }
+        
+        .zoom-in {
+            transform: scale(1.1);
+        }
+        
+        /* Fullscreen styles */
+        :fullscreen .image-container img {
+            max-height: 90vh;
+        }
+        
+        /* Transition selector */
+        .transition-selector {
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Advanced Image Sequence Viewer</h1>
+    
+    <div class="transition-selector">
+        <label for="transitionType">Transition Effect: </label>
+        <select id="transitionType">
+            <option value="fade">Fade</option>
+            <option value="slide">Slide</option>
+            <option value="zoom">Zoom</option>
+            <option value="none">None</option>
+        </select>
+    </div>
+    
+    <div class="progress-container">
+        <div class="slide-counter">Slide: <span id="currentSlide">1</span>/<span id="totalSlides">3</span></div>
+        <div class="timer-display">Next in: <span id="countdown">3</span>s</div>
+        <div id="progressBar" class="progress-bar"></div>
+    </div>
+    
+    <div class="image-container">
+        <img id="currentImage" src="" alt="Sequence Image">
+        <div id="currentCaption" class="caption">Loading...</div>
+    </div>
+    
+    <div class="controls">
+        <button id="playPauseBtn">Pause</button>
+        <button id="prevBtn" disabled>Previous</button>
+        <button id="nextBtn">Next</button>
+        <button id="openModalBtn">Play Sound</button>
+        <button id="fullscreenBtn">Fullscreen</button>
+    </div>
+    
+    <div id="soundModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Now Playing</h2>
+            <p id="modalTitle">Audio for current slide</p>
+            <audio id="modalSound" controls>
+                Your browser does not support the audio element.
+            </audio>
+            <div class="volume-controls">
+                <label for="volumeSlider">Volume: </label>
+                <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="0.7">
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Configuration - EDIT THESE TO MATCH YOUR FILES
+        const imageFiles = [
+            "image1.jpg",
+            "image2.jpg",
+            "image3.jpg"
+            // Add more images as needed
+        ];
+        
+        const transitionTime = 3000; // 3 seconds per slide
+        let currentTransition = 'fade';
+        
+        // State variables
+        let currentIndex = 0;
+        let isPlaying = true;
+        let intervalId = null;
+        let countdownId = null;
+        let captions = [];
+        let audioFiles = [];
+        let preloadedImages = [];
+        
+        // DOM elements
+        const currentImage = document.getElementById('currentImage');
+        const currentCaption = document.getElementById('currentCaption');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const openModalBtn = document.getElementById('openModalBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const progressBar = document.getElementById('progressBar');
+        const modalSound = document.getElementById('modalSound');
+        const modalTitle = document.getElementById('modalTitle');
+        const modal = document.getElementById('soundModal');
+        const closeBtn = document.getElementsByClassName('close')[0];
+        const countdownDisplay = document.getElementById('countdown');
+        const currentSlideDisplay = document.getElementById('currentSlide');
+        const totalSlidesDisplay = document.getElementById('totalSlides');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const transitionType = document.getElementById('transitionType');
+        
+        // Initialize the sequence
+        async function initializeSequence() {
+            // Set total slides display
+            totalSlidesDisplay.textContent = imageFiles.length;
+            
+            // Load all text files
+            captions = await Promise.all(
+                imageFiles.map(img => {
+                    const txtFile = img.replace(/\.[^/.]+$/, "") + ".txt";
+                    return fetchTextFile(txtFile);
+                })
+            );
+            
+            // Generate audio file names
+            audioFiles = imageFiles.map(img => {
+                return img.replace(/\.[^/.]+$/, "") + ".mp3";
+            });
+            
+            // Preload images
+            await preloadImages();
+            
+            // Show first slide
+            showSlide(0);
+            
+            // Start autoplay
+            startAutoPlay();
+            
+            // Set up event listeners
+            setupEventListeners();
+        }
+        
+        // Preload all images for smoother transitions
+        async function preloadImages() {
+            preloadedImages = await Promise.all(
+                imageFiles.map(img => {
+                    return new Promise((resolve) => {
+                        const image = new Image();
+                        image.src = img;
+                        image.onload = () => resolve(img);
+                        image.onerror = () => resolve(img); // Still resolve even if error
+                    });
+                })
+            );
+        }
+        
+        // Fetch text file content
+        async function fetchTextFile(filename) {
+            try {
+                const response = await fetch(filename);
+                if (!response.ok) throw new Error("File not found");
+                return await response.text();
+            } catch (error) {
+                console.error(`Error loading ${filename}:`, error);
+                return `Text for ${filename} not available`;
+            }
+        }
+        
+        // Apply transition effect
+        async function applyTransition(newIndex, direction = 'next') {
+            const imageElement = document.getElementById('currentImage');
+            
+            // Remove any existing transition classes
+            imageElement.classList.remove('fade-out', 'slide-left', 'slide-right', 'zoom-in');
+            
+            switch(currentTransition) {
+                case 'fade':
+                    imageElement.classList.add('fade-out');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                case 'slide':
+                    imageElement.classList.add(direction === 'next' ? 'slide-left' : 'slide-right');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                case 'zoom':
+                    imageElement.classList.add('zoom-in');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                default:
+                    showSlideContent(newIndex);
+                    break;
+            }
+        }
+        
+        // Show slide content (without transition)
+        function showSlideContent(index) {
+            currentIndex = index;
+            currentImage.src = imageFiles[index];
+            currentCaption.textContent = captions[index] || `Description for ${imageFiles[index]}`;
+            
+            // Update modal sound source
+            modalSound.src = audioFiles[index];
+            modalTitle.textContent = `Audio for ${imageFiles[index].replace(/\.[^/.]+$/, "")}`;
+            
+            // Update slide counter
+            currentSlideDisplay.textContent = index + 1;
+            
+            // Update button states
+            prevBtn.disabled = index === 0;
+            nextBtn.disabled = index === imageFiles.length - 1;
+            
+            // Reset progress bar
+            progressBar.style.width = '0%';
+        }
+        
+        // Show a specific slide with transition
+        function showSlide(index, direction = 'next') {
+            pauseAutoPlay();
+            applyTransition(index, direction);
+            if (isPlaying) {
+                startAutoPlay();
+            }
+        }
+        
+        // Start auto-play
+        function startAutoPlay() {
+            if (intervalId) clearInterval(intervalId);
+            if (countdownId) clearInterval(countdownId);
+            
+            // Start countdown timer
+            let secondsRemaining = transitionTime / 1000;
+            countdownDisplay.textContent = secondsRemaining;
+            
+            countdownId = setInterval(() => {
+                secondsRemaining--;
+                countdownDisplay.textContent = secondsRemaining;
+                
+                if (secondsRemaining <= 0) {
+                    clearInterval(countdownId);
+                }
+            }, 1000);
+            
+            intervalId = setInterval(() => {
+                if (currentIndex < imageFiles.length - 1) {
+                    showSlide(currentIndex + 1, 'next');
+                } else {
+                    showSlide(0, 'next'); // Loop back to start
+                }
+            }, transitionTime);
+            
+            // Animate progress bar
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 1;
+                progressBar.style.width = progress + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                }
+            }, transitionTime / 100);
+        }
+        
+        // Pause auto-play
+        function pauseAutoPlay() {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+            if (countdownId) {
+                clearInterval(countdownId);
+                countdownId = null;
+            }
+            countdownDisplay.textContent = '0';
+        }
+        
+        // Toggle play/pause
+        function togglePlayPause() {
+            isPlaying = !isPlaying;
+            
+            if (isPlaying) {
+                startAutoPlay();
+                playPauseBtn.textContent = 'Pause';
+            } else {
+                pauseAutoPlay();
+                playPauseBtn.textContent = 'Play';
+            }
+        }
+        
+        // Toggle fullscreen
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+                fullscreenBtn.textContent = 'Exit Fullscreen';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = 'Fullscreen';
+            }
+        }
+        
+        // Handle touch events for swipe
+        function setupTouchEvents() {
+            let touchStartX = 0;
+            let touchEndX = 0;
+            
+            document.addEventListener('touchstart', e => {
+                touchStartX = e.changedTouches[0].screenX;
+            }, false);
+            
+            document.addEventListener('touchend', e => {
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe();
+            }, false);
+            
+            function handleSwipe() {
+                const threshold = 50; // Minimum swipe distance
+                
+                if (touchEndX < touchStartX - threshold) {
+                    // Swipe left - next
+                    if (currentIndex < imageFiles.length - 1) {
+                        showSlide(currentIndex + 1, 'next');
+                    }
+                } else if (touchEndX > touchStartX + threshold) {
+                    // Swipe right - previous
+                    if (currentIndex > 0) {
+                        showSlide(currentIndex - 1, 'prev');
+                    }
+                }
+            }
+        }
+        
+        // Handle keyboard events
+        function setupKeyboardEvents() {
+            document.addEventListener('keydown', (e) => {
+                switch(e.key) {
+                    case 'ArrowLeft':
+                        if (currentIndex > 0) {
+                            showSlide(currentIndex - 1, 'prev');
+                        }
+                        break;
+                    case 'ArrowRight':
+                        if (currentIndex < imageFiles.length - 1) {
+                            showSlide(currentIndex + 1, 'next');
+                        }
+                        break;
+                    case ' ':
+                        togglePlayPause();
+                        break;
+                    case 'f':
+                        toggleFullscreen();
+                        break;
+                }
+            });
+        }
+        
+        // Set up all event listeners
+        function setupEventListeners() {
+            // Button events
+            prevBtn.addEventListener('click', () => {
+                if (currentIndex > 0) {
+                    showSlide(currentIndex - 1, 'prev');
+                }
+            });
+            
+            nextBtn.addEventListener('click', () => {
+                if (currentIndex < imageFiles.length - 1) {
+                    showSlide(currentIndex + 1, 'next');
+                }
+            });
+            
+            playPauseBtn.addEventListener('click', togglePlayPause);
+            
+            openModalBtn.addEventListener('click', () => {
+                modal.style.display = 'block';
+                modalSound.currentTime = 0;
+                modalSound.play().catch(e => console.log("Autoplay prevented:", e));
+            });
+            
+            fullscreenBtn.addEventListener('click', toggleFullscreen);
+            
+            // Modal events
+            closeBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+                modalSound.pause();
+            });
+            
+            window.addEventListener('click', (event) => {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                    modalSound.pause();
+                }
+            });
+            
+            // Volume control
+            volumeSlider.addEventListener('input', (e) => {
+                modalSound.volume = e.target.value;
+            });
+            
+            // Transition selector
+            transitionType.addEventListener('change', (e) => {
+                currentTransition = e.target.value;
+            });
+            
+            // Setup touch and keyboard controls
+            setupTouchEvents();
+            setupKeyboardEvents();
+        }
+        
+        // Initialize the sequence
+        initializeSequence();
+    </script>
+</body>
+</html>
