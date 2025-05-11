@@ -89,13 +89,13 @@
         // Media configuration
         const mediaFiles = [
             { 
-                media: "pic1.jpg", 
+                media: "pic4.jpg", 
                 audio: "sound1.mp3", 
                 caption: "برای اینکه مکالمه را از صحبت منفی در مورد کسی که در آن صحنه حضور ندارد دور کنید، می توانید به آرامی مکالمه را تغییر دهید و در مورد آن شخص غایب موارد مثبتی مطرح کنید, بدین ترتیب لحن محترمانه ای در گفتگو ادامه پیدا خواهد کرد.",
                 pointerPath: [
-                    { x: 20, y: 20, wait: 3000 },
-                    { x: 80, y: 30, wait: 3000 },
-                    { x: 50, y: 70, wait: 3000 }
+                    { x: 20, y: 20, wait: 10000 },
+                    { x: 80, y: 30, wait: 15000 },
+                    { x: 50, y: 70, wait: 20000 }
                 ]
             },
             { 
@@ -103,9 +103,9 @@
                 audio: "sound2.mp3", 
                 caption: "نپرسید کشورتان برای شما چه کرده است، بلکه بپرسید شما برای کشورتان چه کرده‌اید - جان اف کندی",
                 pointerPath: [
-                    { x: 10, y: 10, wait: 3000 },
-                    { x: 90, y: 20, wait: 3000 },
-                    { x: 40, y: 60, wait: 3000 }
+                    { x: 10, y: 10, wait: 8000 },
+                    { x: 90, y: 20, wait: 12000 },
+                    { x: 40, y: 60, wait: 25000 }
                 ]
             },
             { 
@@ -113,9 +113,9 @@
                 audio: "sound3.mp3", 
                 caption: "آن که پل‌های پشت سرش را به فراموشی می‌سپارد، دیر یا زود درمی‌یابد که راه پیش رو، بدون دست یاری دیگران، دشوارتر از آن است که می‌پنداشت.",
                 pointerPath: [
-                    { x: 30, y: 40, wait: 3000 },
-                    { x: 70, y: 50, wait: 3000 },
-                    { x: 20, y: 80, wait: 3000 }
+                    { x: 30, y: 40, wait: 15000 },
+                    { x: 70, y: 50, wait: 18000 },
+                    { x: 20, y: 80, wait: 12000 }
                 ]
             }
         ];
@@ -170,22 +170,31 @@
 
         function startSequence(slide) {
             // Start playing audio
-            elements.currentAudio.play().catch(e => {
+            const audioPromise = elements.currentAudio.play().catch(e => {
                 showError("Audio playback failed. Please interact with the page first.");
                 console.error("Audio playback error:", e);
+                return Promise.reject(e);
             });
             
             // Start pointer animation
             animatePointer(slide.pointerPath);
             
-            // Set timer for next slide based on audio duration or pointer path
-            const audioDuration = elements.currentAudio.duration * 1000 || 0;
-            const pointerDuration = slide.pointerPath.reduce((sum, point) => sum + point.wait + 3000, 0);
-            const totalDuration = Math.max(audioDuration, pointerDuration) || 10000;
-            
-            timers.push(setTimeout(() => {
-                nextSlide();
-            }, totalDuration));
+            // When audio is ready, set up the transition
+            audioPromise.then(() => {
+                // Use audio duration as the primary timing
+                const audioDuration = elements.currentAudio.duration * 1000;
+                
+                // Set timer for next slide based on audio duration
+                timers.push(setTimeout(() => {
+                    nextSlide();
+                }, audioDuration));
+            }).catch(() => {
+                // Fallback to pointer path timing if audio fails
+                const pointerDuration = slide.pointerPath.reduce((sum, point) => sum + point.wait + 3000, 0);
+                timers.push(setTimeout(() => {
+                    nextSlide();
+                }, pointerDuration));
+            });
         }
 
         function animatePointer(path) {
@@ -196,7 +205,6 @@
             
             function moveToNextPoint() {
                 if (currentPoint >= path.length) {
-                    elements.pointer.style.display = 'none';
                     return;
                 }
                 
@@ -217,7 +225,7 @@
                 currentPoint++;
                 
                 if (currentPoint < path.length) {
-                    timers.push(setTimeout(moveToNextPoint, path[currentPoint].wait + 3000));
+                    timers.push(setTimeout(moveToNextPoint, path[currentPoint].wait));
                 }
             }
             
@@ -294,6 +302,15 @@
             elements.currentAudio.addEventListener('ended', () => {
                 if (isPlaying) {
                     nextSlide();
+                }
+            });
+            
+            // Handle when audio metadata is loaded
+            elements.currentAudio.addEventListener('loadedmetadata', () => {
+                if (isPlaying) {
+                    // Restart sequence with proper timing
+                    clearTimers();
+                    startSequence(mediaFiles[currentIndex]);
                 }
             });
         }
