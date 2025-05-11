@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ultimate Media Sequence Viewer with Pointer</title>
     <style>
-        /* [Previous CSS content remains exactly the same] */
+        /* [Keep all your existing CSS styles] */
     </style>
 </head>
 <body>
-    <!-- [Previous HTML content remains exactly the same until the script section] -->
+    <!-- [Keep all your existing HTML structure] -->
 
     <script>
         // Configuration - EDIT THESE TO MATCH YOUR FILES
@@ -50,35 +50,122 @@
         const state = {
             currentIndex: 0,
             isPlaying: false,
-            enablePreload: false,
             currentTransition: 'fade',
-            audioDurations: [],
-            preloadedMedia: [],
             timers: {
                 progress: null,
                 countdown: null,
                 transition: null,
                 pointer: null
             },
-            isPreloading: false,
-            currentPointerPath: [],
-            mediaLoadAttempts: 0
+            currentPointerPath: []
         };
         
-        // [Previous DOM elements cache remains the same]
+        // DOM elements cache
+        const elements = {
+            currentMedia: document.getElementById('currentMedia'),
+            nextMedia: document.getElementById('nextMedia'),
+            currentCaption: document.getElementById('currentCaption'),
+            prevBtn: document.getElementById('prevBtn'),
+            nextBtn: document.getElementById('nextBtn'),
+            playPauseBtn: document.getElementById('playPauseBtn'),
+            playPauseText: document.getElementById('playPauseText'),
+            playIcon: document.getElementById('playIcon'),
+            pauseIcon: document.getElementById('pauseIcon'),
+            progressBar: document.getElementById('progressBar'),
+            currentAudio: document.getElementById('currentAudio'),
+            countdown: document.getElementById('countdown'),
+            currentSlide: document.getElementById('currentSlide'),
+            totalSlides: document.getElementById('totalSlides'),
+            pointer: document.getElementById('pointer'),
+            pointerPathBody: document.getElementById('pointerPathBody'),
+            errorMessage: document.getElementById('errorMessage')
+        };
 
         // Initialize the application
-        async function init() {
+        function init() {
             setupEventListeners();
-            await loadAudioDurations();
             updateUI();
-            showSlide(state.currentIndex);
+            loadCurrentSlide();
         }
-        
-        // [Previous loadAudioDurations(), getAudioDuration(), preloadMedia(), 
-        // showLoading(), showError(), updateUI(), updatePointerPathTable() functions remain the same]
 
-        // Move pointer along the defined path
+        function loadCurrentSlide() {
+            const file = mediaFiles[state.currentIndex];
+            
+            // Clear any previous errors
+            showError(false);
+            
+            // Set current pointer path
+            state.currentPointerPath = file.pointerPath || [];
+            updatePointerPathTable(state.currentPointerPath);
+            
+            // Load media
+            elements.currentMedia.src = file.media;
+            elements.currentMedia.onerror = () => {
+                showError(true, `Failed to load image: ${file.media}`);
+            };
+            
+            // Load audio
+            elements.currentAudio.src = file.audio;
+            elements.currentAudio.onerror = () => {
+                showError(true, `Failed to load audio: ${file.audio}`);
+            };
+            
+            // Update caption
+            elements.currentCaption.textContent = file.caption;
+            
+            // Update UI
+            updateUI();
+            
+            // If playing, start the sequence
+            if (state.isPlaying) {
+                startAutoPlay();
+            }
+        }
+
+        function startAutoPlay() {
+            clearTimers();
+            
+            const file = mediaFiles[state.currentIndex];
+            const duration = file.pointerPath.reduce((sum, p) => sum + p.wait, 0) || 5000;
+            
+            // Update countdown
+            let secondsRemaining = Math.floor(duration / 1000);
+            updateCountdown(secondsRemaining);
+            
+            // Countdown timer
+            state.timers.countdown = setInterval(() => {
+                secondsRemaining--;
+                updateCountdown(secondsRemaining);
+            }, 1000);
+            
+            // Progress bar animation
+            let progress = 0;
+            const increment = 100 / (duration / 100);
+            
+            state.timers.progress = setInterval(() => {
+                progress += increment;
+                elements.progressBar.style.width = Math.min(progress, 100) + '%';
+            }, 100);
+            
+            // Start pointer animation
+            movePointerAlongPath();
+            
+            // Set timer for next slide
+            state.timers.transition = setTimeout(() => {
+                if (state.currentIndex < mediaFiles.length - 1) {
+                    state.currentIndex++;
+                } else {
+                    state.currentIndex = 0; // Loop to start
+                }
+                loadCurrentSlide();
+            }, duration);
+            
+            // Play audio if available
+            elements.currentAudio.play().catch(e => {
+                console.log("Autoplay prevented:", e);
+            });
+        }
+
         function movePointerAlongPath() {
             clearTimeout(state.timers.pointer);
             
@@ -143,226 +230,121 @@
             }, firstPoint.wait);
         }
 
-        // Apply transition effect between slides
-        async function applyTransition(newIndex, direction = 'next') {
-            if (state.isPreloading) {
-                console.warn("Media still preloading, transition may not be smooth");
-                showSlideContent(newIndex);
-                return;
-            }
+        function updateUI() {
+            elements.currentSlide.textContent = state.currentIndex + 1;
+            elements.totalSlides.textContent = mediaFiles.length;
+            elements.prevBtn.disabled = state.currentIndex === 0;
+            elements.nextBtn.disabled = state.currentIndex === mediaFiles.length - 1;
             
-            const currentMedia = elements.currentMedia;
-            const nextMedia = elements.nextMedia;
-            const file = mediaFiles[newIndex];
-            
-            try {
-                // Reset error state
-                showError(false);
-                state.mediaLoadAttempts = 0;
-                
-                // Preload next media
-                nextMedia.src = file.media;
-                nextMedia.style.opacity = '0';
-                
-                // Wait for media to load with timeout
-                await new Promise((resolve, reject) => {
-                    let loaded = false;
-                    
-                    const loadHandler = () => {
-                        if (!loaded) {
-                            loaded = true;
-                            resolve();
-                        }
-                    };
-                    
-                    const errorHandler = () => {
-                        if (!loaded) {
-                            loaded = true;
-                            state.mediaLoadAttempts++;
-                            if (state.mediaLoadAttempts < 3) {
-                                console.log(`Retrying media load (attempt ${state.mediaLoadAttempts})`);
-                                setTimeout(() => {
-                                    nextMedia.src = file.media;
-                                }, 1000);
-                            } else {
-                                reject(new Error(`Failed to load media after 3 attempts: ${file.media}`));
-                            }
-                        }
-                    };
-                    
-                    const timeout = setTimeout(() => {
-                        if (!loaded) {
-                            loaded = true;
-                            console.warn(`Media load timeout: ${file.media}`);
-                            resolve(); // Continue even if timeout
-                        }
-                    }, 5000);
-                    
-                    nextMedia.onload = loadHandler;
-                    nextMedia.onerror = errorHandler;
-                    
-                    if (nextMedia.complete) {
-                        loadHandler();
-                    }
-                });
-                
-                // Apply transition effect
-                switch(state.currentTransition) {
-                    case 'fade':
-                        currentMedia.classList.add('fade-out');
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        showSlideContent(newIndex);
-                        break;
-                        
-                    case 'slide':
-                        currentMedia.classList.add(direction === 'next' ? 'slide-left' : 'slide-right');
-                        nextMedia.style.transform = direction === 'next' ? 'translateX(100%)' : 'translateX(-100%)';
-                        nextMedia.style.opacity = '1';
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        showSlideContent(newIndex);
-                        break;
-                        
-                    case 'zoom':
-                        currentMedia.classList.add('zoom-out');
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        showSlideContent(newIndex);
-                        break;
-                        
-                    default:
-                        showSlideContent(newIndex);
-                        break;
-                }
-            } catch (error) {
-                console.error("Transition error:", error);
-                showError(true, `Error loading media: ${file.media}. Please check file exists.`);
+            // Update play/pause button
+            if (state.isPlaying) {
+                elements.playIcon.style.display = 'none';
+                elements.pauseIcon.style.display = 'block';
+                elements.playPauseText.textContent = 'Pause';
+            } else {
+                elements.playIcon.style.display = 'block';
+                elements.pauseIcon.style.display = 'none';
+                elements.playPauseText.textContent = 'Play';
             }
         }
 
-        // Show slide content (without transition)
-        function showSlideContent(index) {
-            try {
-                state.currentIndex = index;
-                const file = mediaFiles[index];
+        function updatePointerPathTable(path) {
+            elements.pointerPathBody.innerHTML = '';
+            
+            path.forEach((point, index) => {
+                const row = document.createElement('tr');
                 
-                // Set current pointer path
-                state.currentPointerPath = file.pointerPath || [];
-                updatePointerPathTable(state.currentPointerPath);
+                const pointCell = document.createElement('td');
+                pointCell.textContent = index + 1;
                 
-                // Swap media elements
-                const temp = elements.currentMedia.src;
-                elements.currentMedia.src = elements.nextMedia.src;
-                elements.nextMedia.src = temp;
+                const xCell = document.createElement('td');
+                xCell.textContent = `${point.x}%`;
                 
-                // Reset styles
-                elements.currentMedia.classList.remove('fade-out', 'slide-left', 'slide-right', 'zoom-out');
-                elements.currentMedia.style.opacity = '1';
-                elements.currentMedia.style.transform = 'none';
-                elements.nextMedia.style.opacity = '0';
-                elements.nextMedia.style.transform = 'none';
+                const yCell = document.createElement('td');
+                yCell.textContent = `${point.y}%`;
                 
-                // Update caption
-                elements.currentCaption.textContent = file.caption;
+                const waitCell = document.createElement('td');
+                waitCell.textContent = point.wait;
                 
-                // Update audio
-                elements.currentAudio.src = file.audio;
+                row.appendChild(pointCell);
+                row.appendChild(xCell);
+                row.appendChild(yCell);
+                row.appendChild(waitCell);
                 
-                // Play audio if autoplay is enabled
-                if (state.isPlaying) {
-                    elements.currentAudio.currentTime = 0;
-                    elements.currentAudio.play().catch(e => {
-                        console.log("Autoplay prevented:", e);
-                        // If autoplay is blocked, start the timer manually
-                        startAutoPlay();
-                    });
-                    movePointerAlongPath();
-                }
-                
-                // Update UI
-                updateUI();
-                updateButtonStates();
-                
-                // Reset progress
-                elements.progressBar.style.width = '0%';
-                
-            } catch (error) {
-                console.error("Error showing slide:", error);
-                showError(true, "Error displaying slide content. Please check console for details.");
-            }
+                elements.pointerPathBody.appendChild(row);
+            });
         }
 
-        // Show a specific slide with transition
-        function showSlide(index, direction = 'next') {
-            if (index < 0 || index >= mediaFiles.length) return;
+        function updateCountdown(seconds) {
+            elements.countdown.textContent = Math.max(0, seconds);
+        }
+
+        function showError(show, message = "") {
+            elements.errorMessage.style.display = show ? 'block' : 'none';
+            if (show) elements.errorMessage.textContent = message;
+        }
+
+        function clearTimers() {
+            Object.values(state.timers).forEach(timer => {
+                if (timer) clearTimeout(timer);
+            });
             
-            clearTimers();
-            applyTransition(index, direction);
+            state.timers = {
+                progress: null,
+                countdown: null,
+                transition: null,
+                pointer: null
+            };
+            
+            updateCountdown(0);
+            elements.pointer.style.display = 'none';
+        }
+
+        function togglePlayPause() {
+            state.isPlaying = !state.isPlaying;
             
             if (state.isPlaying) {
                 startAutoPlay();
+            } else {
+                clearTimers();
+                elements.currentAudio.pause();
             }
+            
+            updateUI();
         }
 
-        // Start auto-play using audio duration
-        function startAutoPlay() {
-            clearTimers();
-            
-            const duration = state.audioDurations[state.currentIndex] || 
-                           mediaFiles[state.currentIndex].pointerPath.reduce((sum, p) => sum + p.wait, 0) || 
-                           3000;
-            
-            let secondsRemaining = Math.floor(duration / 1000);
-            updateCountdown(secondsRemaining);
-            
-            // Update countdown timer
-            state.timers.countdown = setInterval(() => {
-                secondsRemaining--;
-                updateCountdown(secondsRemaining);
-                
-                if (secondsRemaining <= 0) {
-                    clearInterval(state.timers.countdown);
+        function setupEventListeners() {
+            // Navigation buttons
+            elements.prevBtn.addEventListener('click', () => {
+                if (state.currentIndex > 0) {
+                    state.currentIndex--;
+                    loadCurrentSlide();
                 }
-            }, 1000);
+            });
             
-            // Start transition timer
-            state.timers.transition = setTimeout(() => {
+            elements.nextBtn.addEventListener('click', () => {
                 if (state.currentIndex < mediaFiles.length - 1) {
-                    showSlide(state.currentIndex + 1, 'next');
-                } else {
-                    // Loop to beginning or stop
-                    showSlide(0, 'next');
+                    state.currentIndex++;
+                    loadCurrentSlide();
                 }
-            }, duration);
+            });
             
-            // Animate progress bar
-            let progress = 0;
-            const increment = 100 / (duration / 100);
+            // Play/pause toggle
+            elements.playPauseBtn.addEventListener('click', togglePlayPause);
             
-            state.timers.progress = setInterval(() => {
-                progress += increment;
-                elements.progressBar.style.width = Math.min(progress, 100) + '%';
-                
-                if (progress >= 100) {
-                    clearInterval(state.timers.progress);
-                }
-            }, 100);
-            
-            // Start pointer animation
-            movePointerAlongPath();
-            
-            // Add audio ended handler as backup
-            elements.currentAudio.onended = () => {
+            // Audio ended handler
+            elements.currentAudio.addEventListener('ended', () => {
                 if (state.isPlaying) {
                     if (state.currentIndex < mediaFiles.length - 1) {
-                        showSlide(state.currentIndex + 1, 'next');
+                        state.currentIndex++;
                     } else {
-                        showSlide(0, 'next');
+                        state.currentIndex = 0;
                     }
+                    loadCurrentSlide();
                 }
-            };
+            });
         }
 
-        // [Rest of the code remains the same...]
-        
         // Initialize the application
         document.addEventListener('DOMContentLoaded', init);
     </script>
