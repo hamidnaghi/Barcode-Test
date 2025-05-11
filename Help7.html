@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Media Viewer with Pointer</title>
+    <title>Media Viewer with Pointer and Audio</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -60,6 +60,11 @@
             margin: 20px 0;
             display: none;
         }
+
+        audio {
+            width: 100%;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -69,6 +74,8 @@
     </div>
     
     <div id="currentCaption" style="text-align: center; margin-bottom: 20px;"></div>
+    
+    <audio id="currentAudio" controls></audio>
     
     <div class="controls">
         <button id="prevBtn">Previous</button>
@@ -121,6 +128,7 @@
             currentMedia: document.getElementById('currentMedia'),
             pointer: document.getElementById('pointer'),
             currentCaption: document.getElementById('currentCaption'),
+            currentAudio: document.getElementById('currentAudio'),
             prevBtn: document.getElementById('prevBtn'),
             nextBtn: document.getElementById('nextBtn'),
             playPauseBtn: document.getElementById('playPauseBtn'),
@@ -145,6 +153,12 @@
                 showError(`Failed to load image: ${slide.media}`);
             };
             
+            // Load audio
+            elements.currentAudio.src = slide.audio;
+            elements.currentAudio.onerror = () => {
+                showError(`Failed to load audio: ${slide.audio}`);
+            };
+            
             // Load caption
             elements.currentCaption.textContent = slide.caption;
             
@@ -155,11 +169,20 @@
         }
 
         function startSequence(slide) {
+            // Start playing audio
+            elements.currentAudio.play().catch(e => {
+                showError("Audio playback failed. Please interact with the page first.");
+                console.error("Audio playback error:", e);
+            });
+            
             // Start pointer animation
             animatePointer(slide.pointerPath);
             
-            // Set timer for next slide
-            const totalDuration = slide.pointerPath.reduce((sum, point) => sum + point.wait + 3000, 0);
+            // Set timer for next slide based on audio duration or pointer path
+            const audioDuration = elements.currentAudio.duration * 1000 || 0;
+            const pointerDuration = slide.pointerPath.reduce((sum, point) => sum + point.wait + 3000, 0);
+            const totalDuration = Math.max(audioDuration, pointerDuration) || 10000;
+            
             timers.push(setTimeout(() => {
                 nextSlide();
             }, totalDuration));
@@ -243,6 +266,7 @@
                 startSequence(mediaFiles[currentIndex]);
             } else {
                 elements.playPauseBtn.textContent = 'Play';
+                elements.currentAudio.pause();
                 clearTimers();
             }
         }
@@ -256,12 +280,22 @@
         function showError(message) {
             elements.errorMessage.textContent = message;
             elements.errorMessage.style.display = 'block';
+            setTimeout(() => {
+                elements.errorMessage.style.display = 'none';
+            }, 5000);
         }
 
         function setupEventListeners() {
             elements.prevBtn.addEventListener('click', prevSlide);
             elements.nextBtn.addEventListener('click', nextSlide);
             elements.playPauseBtn.addEventListener('click', togglePlayPause);
+            
+            // Handle audio ended event
+            elements.currentAudio.addEventListener('ended', () => {
+                if (isPlaying) {
+                    nextSlide();
+                }
+            });
         }
 
         // Start the application
