@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presentation Player</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .media-container {
+            position: relative;
+            width: 100%;
+            height: 500px;
+            background: #f1f1f1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        
+        .media-content {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .pointer {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            display: none;
+            transition: left 3s ease, top 3s ease;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        
+        .error {
+            color: red;
+            text-align: center;
+            margin: 20px 0;
+            display: none;
+        }
+
+        audio {
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .caption {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.2em;
+        }
+        
+        .file-selector {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="file-selector">
+        <label>Select Presentation File: 
+            <input type="file" id="presentationFile" accept=".json">
+        </label>
+    </div>
+    
+    <div class="media-container">
+        <img id="currentMedia" class="media-content" alt="Current media">
+        <div class="pointer" id="pointer"></div>
+    </div>
+    
+    <div id="currentCaption" class="caption"></div>
+    
+    <audio id="currentAudio" controls></audio>
+    
+    <div class="controls">
+        <button id="prevBtn">Previous</button>
+        <button id="playPauseBtn">Play</button>
+        <button id="nextBtn">Next</button>
+    </div>
+    
+    <div id="errorMessage" class="error"></div>
+
+    <script>
+        // Presentation data
+        let presentation = {
+            slides: [],
+            currentIndex: 0,
+            isPlaying: false,
+            timers: []
+        };
+
+        // DOM elements
+        const elements = {
+            presentationFile: document.getElementById('presentationFile'),
+            currentMedia: document.getElementById('currentMedia'),
+            pointer: document.getElementById('pointer'),
+            currentCaption: document.getElementById('currentCaption'),
+            currentAudio: document.getElementById('currentAudio'),
+            prevBtn: document.getElementById('prevBtn'),
+            nextBtn: document.getElementById('nextBtn'),
+            playPauseBtn: document.getElementById('playPauseBtn'),
+            errorMessage: document.getElementById('errorMessage')
+        };
+
+        // Initialize the player
+        function init() {
+            setupEventListeners();
+        }
+
+        function loadPresentation(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    presentation.slides = JSON.parse(e.target.result);
+                    presentation.currentIndex = 0;
+                    loadSlide();
+                } catch (error) {
+                    showError("Error parsing presentation file: " + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function loadSlide() {
+            // Clear any existing timers
+            clearTimers();
+            
+            const slide = presentation.slides[presentation.currentIndex];
+            
+            if (!slide) {
+                showError("No slides loaded");
+                return;
+            }
+            
+            // Load media
+            elements.currentMedia.src = slide.media;
+            elements.currentMedia.onerror = () => {
+                showError(`Failed to load image: ${slide.media}`);
+            };
+            
+            // Load audio
+            elements.currentAudio.src = slide.audio;
+            elements.currentAudio.onerror = () => {
+                showError(`Failed to load audio: ${slide.audio}`);
+            };
+            
+            // Load caption
+            elements.currentCaption.textContent = slide.caption;
+            
+            // Update UI
+            updateUI();
+            
+            // If playing, start the sequence
+            if (presentation.isPlaying) {
+                startSequence();
+            }
+        }
+
+        function startSequence() {
+            const slide = presentation.slides[presentation.currentIndex];
+            
+            // Start playing audio
+            const audioPromise = elements.currentAudio.play().catch(e => {
+                showError("Audio playback failed. Please interact with the page first.");
+                console.error("Audio playback error:", e);
+                return Promise.reject(e);
+            });
+            
+            // Start pointer animation
+            animatePointer(slide.pointerPath);
+            
+            // When audio is ready, set up the transition
+            audioPromise.then(() => {
+                // Use audio duration as the primary timing
+                const audioDuration = elements.currentAudio.duration * 1000;
+                
+                // Set timer for next slide based on audio duration
+                presentation.timers.push(setTimeout(() => {
+                    nextSlide();
+                }, audioDuration));
+            }).catch(() => {
+                // Fallback to pointer path timing if audio fails
+                const pointerDuration = slide.pointerPath.reduce((sum, point) => sum + point.wait + 3000, 0);
+                presentation.timers.push(setTimeout(() => {
+                    nextSlide();
+                }, pointerDuration));
+            });
+        }
+
+        function animatePointer(path) {
+            if (!path || path.length === 0) return;
+            
+            elements.pointer.style.display = 'block';
+            let currentPoint = 0;
+            
+            function moveToNextPoint() {
+                if (currentPoint >= path.length) {
+                    return;
+                }
+                
+                const point = path[currentPoint];
+                const mediaRect = elements.currentMedia.getBoundingClientRect();
+                const containerRect = elements.currentMedia.parentElement.getBoundingClientRect();
+                
+                // Calculate position
+                const xPos = (point.x / 100) * mediaRect.width;
+                const yPos = (point.y / 100) * mediaRect.height;
+                const pointerX = containerRect.left + xPos;
+                const pointerY = containerRect.top + yPos;
+                
+                // Move pointer
+                elements.pointer.style.left = `${pointerX}px`;
+                elements.pointer.style.top = `${pointerY}px`;
+                
+                currentPoint++;
+                
+                if (currentPoint < path.length) {
+                    presentation.timers.push(setTimeout(moveToNextPoint, path[currentPoint].wait));
+                }
+            }
+            
+            // Initialize first position
+            const firstPoint = path[0];
+            const mediaRect = elements.currentMedia.getBoundingClientRect();
+            const containerRect = elements.currentMedia.parentElement.getBoundingClientRect();
+            const firstXPos = (firstPoint.x / 100) * mediaRect.width;
+            const firstYPos = (firstPoint.y / 100) * mediaRect.height;
+            const firstPointerX = containerRect.left + firstXPos;
+            const firstPointerY = containerRect.top + firstYPos;
+            
+            elements.pointer.style.transition = 'none';
+            elements.pointer.style.left = `${firstPointerX}px`;
+            elements.pointer.style.top = `${firstPointerY}px`;
+            void elements.pointer.offsetWidth; // Force reflow
+            elements.pointer.style.transition = 'left 3s ease, top 3s ease';
+            
+            // Start moving
+            presentation.timers.push(setTimeout(moveToNextPoint, firstPoint.wait));
+        }
+
+        function nextSlide() {
+            if (presentation.currentIndex < presentation.slides.length - 1) {
+                presentation.currentIndex++;
+            } else {
+                presentation.currentIndex = 0;
+            }
+            loadSlide();
+        }
+
+        function prevSlide() {
+            if (presentation.currentIndex > 0) {
+                presentation.currentIndex--;
+            } else {
+                presentation.currentIndex = presentation.slides.length - 1;
+            }
+            loadSlide();
+        }
+
+        function togglePlayPause() {
+            presentation.isPlaying = !presentation.isPlaying;
+            
+            if (presentation.isPlaying) {
+                elements.playPauseBtn.textContent = 'Pause';
+                startSequence();
+            } else {
+                elements.playPauseBtn.textContent = 'Play';
+                elements.currentAudio.pause();
+                clearTimers();
+            }
+            
+            updateUI();
+        }
+
+        function clearTimers() {
+            presentation.timers.forEach(timer => clearTimeout(timer));
+            presentation.timers = [];
+            elements.pointer.style.display = 'none';
+        }
+
+        function showError(message) {
+            elements.errorMessage.textContent = message;
+            elements.errorMessage.style.display = 'block';
+            setTimeout(() => {
+                elements.errorMessage.style.display = 'none';
+            }, 5000);
+        }
+
+        function updateUI() {
+            elements.playPauseBtn.textContent = presentation.isPlaying ? 'Pause' : 'Play';
+            elements.prevBtn.disabled = presentation.currentIndex === 0;
+            elements.nextBtn.disabled = presentation.currentIndex === presentation.slides.length - 1;
+        }
+
+        function setupEventListeners() {
+            // File selection
+            elements.presentationFile.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    loadPresentation(file);
+                }
+            });
+            
+            // Navigation buttons
+            elements.prevBtn.addEventListener('click', prevSlide);
+            elements.nextBtn.addEventListener('click', nextSlide);
+            elements.playPauseBtn.addEventListener('click', togglePlayPause);
+            
+            // Handle audio ended event
+            elements.currentAudio.addEventListener('ended', () => {
+                if (presentation.isPlaying) {
+                    nextSlide();
+                }
+            });
+            
+            // Handle when audio metadata is loaded
+            elements.currentAudio.addEventListener('loadedmetadata', () => {
+                if (presentation.isPlaying) {
+                    // Restart sequence with proper timing
+                    clearTimers();
+                    startSequence();
+                }
+            });
+        }
+
+        // Initialize the player
+        init();
+    </script>
+</body>
+</html>
