@@ -35,6 +35,7 @@
             justify-content: center;
             background-color: #f9f9f9;
             border-radius: 4px;
+            overflow: hidden;
         }
         .edit-pane {
             flex: 1;
@@ -57,6 +58,9 @@
             cursor: move;
             border: 2px solid white;
             box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            will-change: left, top;
+            pointer-events: none;
+            z-index: 10;
         }
         .file-inputs {
             display: flex;
@@ -300,6 +304,7 @@
                 if (!slide.pointerPath) slide.pointerPath = [];
                 slide.pointerPath.push({ x: 50, y: 50, wait: 3000 });
                 updatePointsTable();
+                previewPoint(slide.pointerPath[slide.pointerPath.length - 1]);
             });
 
             // Remove point button
@@ -311,21 +316,56 @@
                 }
             });
 
-            // Preview pane click for adding points
+            // Precise click handler for point placement
             elements.previewPane.addEventListener('click', function(e) {
                 if (e.target === elements.previewImage) {
-                    const rect = elements.previewImage.getBoundingClientRect();
-                    const x = ((e.clientX - rect.left) / rect.width) * 100;
-                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    const img = elements.previewImage;
+                    const container = elements.previewPane;
+                    const imgRect = img.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
                     
-                    const slide = presentation.slides[presentation.currentSlideIndex];
-                    if (!slide.pointerPath) slide.pointerPath = [];
-                    slide.pointerPath.push({ 
-                        x: Math.round(x), 
-                        y: Math.round(y), 
-                        wait: 3000 
-                    });
-                    updatePointsTable();
+                    // Calculate actual displayed image area (accounting for object-fit: contain)
+                    const imgRatio = img.naturalWidth / img.naturalHeight;
+                    const containerRatio = containerRect.width / containerRect.height;
+                    
+                    let displayedWidth, displayedHeight, offsetX, offsetY;
+                    
+                    if (imgRatio > containerRatio) {
+                        // Image is wider than container (letterboxed on top/bottom)
+                        displayedWidth = containerRect.width;
+                        displayedHeight = containerRect.width / imgRatio;
+                        offsetX = 0;
+                        offsetY = (containerRect.height - displayedHeight) / 2;
+                    } else {
+                        // Image is taller than container (letterboxed on sides)
+                        displayedHeight = containerRect.height;
+                        displayedWidth = containerRect.height * imgRatio;
+                        offsetX = (containerRect.width - displayedWidth) / 2;
+                        offsetY = 0;
+                    }
+                    
+                    // Calculate click position relative to container
+                    const clickX = e.clientX - containerRect.left;
+                    const clickY = e.clientY - containerRect.top;
+                    
+                    // Only register clicks on the actual image (not letterbox areas)
+                    if (clickX >= offsetX && clickX <= offsetX + displayedWidth &&
+                        clickY >= offsetY && clickY <= offsetY + displayedHeight) {
+                        
+                        // Convert to percentage coordinates (0-100%)
+                        const x = ((clickX - offsetX) / displayedWidth) * 100;
+                        const y = ((clickY - offsetY) / displayedHeight) * 100;
+                        
+                        const slide = presentation.slides[presentation.currentSlideIndex];
+                        if (!slide.pointerPath) slide.pointerPath = [];
+                        slide.pointerPath.push({ 
+                            x: Math.round(x * 100) / 100, // Round to 2 decimal places
+                            y: Math.round(y * 100) / 100,
+                            wait: 3000 
+                        });
+                        updatePointsTable();
+                        previewPoint(slide.pointerPath[slide.pointerPath.length - 1]);
+                    }
                 }
             });
 
@@ -453,36 +493,44 @@
             elements.removePointBtn.disabled = slide.pointerPath.length === 0;
         }
 
-    function previewPoint(point) {
-        const img = elements.previewImage;
-        const imgRect = img.getBoundingClientRect();
-        const containerRect = elements.previewPane.getBoundingClientRect();
-        
-        // Calculate the actual displayed image dimensions (may be scaled)
-        const scale = Math.min(
-            containerRect.width / img.naturalWidth,
-            containerRect.height / img.naturalHeight
-        );
-        const displayedWidth = img.naturalWidth * scale;
-        const displayedHeight = img.naturalHeight * scale;
-        
-        // Calculate the offset (centering)
-        const offsetX = (containerRect.width - displayedWidth) / 2;
-        const offsetY = (containerRect.height - displayedHeight) / 2;
-        
-        // Calculate position
-        const xPos = offsetX + (point.x / 100) * displayedWidth;
-        const yPos = offsetY + (point.y / 100) * displayedHeight;
-        
-        elements.pointer.style.left = `${xPos}px`;
-        elements.pointer.style.top = `${yPos}px`;
-        elements.pointer.style.display = 'block';
-        
-        setTimeout(() => {
-            elements.pointer.style.display = 'none';
-        }, 2000);
-    }
-
+        function previewPoint(point) {
+            const img = elements.previewImage;
+            const container = elements.previewPane;
+            const imgRect = img.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            
+            // Recalculate the displayed image area (same as click handler)
+            const imgRatio = img.naturalWidth / img.naturalHeight;
+            const containerRatio = containerRect.width / containerRect.height;
+            
+            let displayedWidth, displayedHeight, offsetX, offsetY;
+            
+            if (imgRatio > containerRatio) {
+                displayedWidth = containerRect.width;
+                displayedHeight = containerRect.width / imgRatio;
+                offsetX = 0;
+                offsetY = (containerRect.height - displayedHeight) / 2;
+            } else {
+                displayedHeight = containerRect.height;
+                displayedWidth = containerRect.height * imgRatio;
+                offsetX = (containerRect.width - displayedWidth) / 2;
+                offsetY = 0;
+            }
+            
+            // Calculate position accounting for letterboxing
+            const xPos = containerRect.left + offsetX + (point.x / 100) * displayedWidth;
+            const yPos = containerRect.top + offsetY + (point.y / 100) * displayedHeight;
+            
+            // Position pointer absolutely
+            elements.pointer.style.position = 'fixed';
+            elements.pointer.style.left = `${xPos}px`;
+            elements.pointer.style.top = `${yPos}px`;
+            elements.pointer.style.display = 'block';
+            
+            setTimeout(() => {
+                elements.pointer.style.display = 'none';
+            }, 2000);
+        }
 
         function prevSlide() {
             if (presentation.currentSlideIndex > 0) {
