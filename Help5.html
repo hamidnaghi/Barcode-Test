@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate Media Sequence Viewer</title>
+    <style>
+        :root {
+            --primary: #4285F4;
+            --secondary: #34A853;
+            --accent: #EA4335;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --gray: #6c757d;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: var(--light);
+            color: var(--dark);
+            touch-action: pan-y;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        h1 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .viewer {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+        
+        .media-container {
+            position: relative;
+            width: 100%;
+            height: 500px;
+            background: #f1f3f4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .media-content {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Transition effects */
+        .fade-out { opacity: 0; }
+        .slide-left { transform: translateX(-100%); }
+        .slide-right { transform: translateX(100%); }
+        .zoom-out { transform: scale(0.8); opacity: 0; }
+        
+        .info-panel {
+            padding: 1.5rem;
+            border-top: 1px solid #eee;
+        }
+        
+        .caption {
+            font-size: 1.1rem;
+            line-height: 1.5;
+            margin-bottom: 1rem;
+            min-height: 4rem;
+        }
+        
+        .progress-container {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            margin: 1rem 0;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: var(--gray);
+            margin-bottom: 0.5rem;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+        }
+        
+        button {
+            padding: 0.75rem;
+            font-size: 1rem;
+            font-weight: 500;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .primary-btn {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .primary-btn:hover {
+            background: #3367d6;
+        }
+        
+        .secondary-btn {
+            background: var(--secondary);
+            color: white;
+        }
+        
+        .secondary-btn:hover {
+            background: #2d9249;
+        }
+        
+        .accent-btn {
+            background: var(--accent);
+            color: white;
+        }
+        
+        .accent-btn:hover {
+            background: #d33426;
+        }
+        
+        button:disabled {
+            background: #e9ecef;
+            color: #adb5bd;
+            cursor: not-allowed;
+        }
+        
+        .audio-player {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+        
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-grow: 1;
+        }
+        
+        input[type="range"] {
+            flex-grow: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #dee2e6;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+        }
+        
+        .settings-panel {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .setting-group {
+            margin-bottom: 1rem;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        
+        select {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 1px solid #ced4da;
+            background: white;
+            font-size: 1rem;
+        }
+        
+        /* Loading indicator */
+        .loader {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(66, 133, 244, 0.2);
+            border-top: 5px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+        /* Error message */
+        .error-message {
+            color: var(--accent);
+            text-align: center;
+            padding: 1rem;
+            background: rgba(234, 67, 53, 0.1);
+            border-radius: 8px;
+            margin: 1rem 0;
+            display: none;
+        }
+        
+        /* Fullscreen styles */
+        :fullscreen .viewer {
+            width: 100%;
+            height: 100%;
+            max-width: none;
+            border-radius: 0;
+        }
+        
+        :fullscreen .media-container {
+            height: calc(100vh - 200px);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Ultimate Media Sequence Viewer</h1>
+        <p>View images, GIFs, and audio in perfect synchronization</p>
+    </header>
+    
+    <div class="settings-panel">
+        <div class="setting-group">
+            <label for="transitionType">Transition Effect</label>
+            <select id="transitionType">
+                <option value="fade">Fade</option>
+                <option value="slide">Slide</option>
+                <option value="zoom">Zoom</option>
+                <option value="none">None</option>
+            </select>
+        </div>
+    </div>
+    
+    <div class="error-message" id="errorMessage"></div>
+    
+    <div class="viewer">
+        <div class="media-container">
+            <div class="loader" id="loader"></div>
+            <img id="currentMedia" class="media-content" alt="Current media">
+            <img id="nextMedia" class="media-content" style="opacity: 0;" alt="Next media">
+        </div>
+        
+        <div class="info-panel">
+            <div class="status-bar">
+                <div>Slide: <span id="currentSlide">1</span>/<span id="totalSlides">0</span></div>
+                <div>Next in: <span id="countdown">0</span>s</div>
+            </div>
+            
+            <div class="progress-container">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
+            
+            <div id="currentCaption" class="caption">Loading media...</div>
+            
+            <div class="audio-player">
+                <h3>Audio Player</h3>
+                <p id="audioTitle">Current Slide Audio</p>
+                <div class="audio-controls">
+                    <audio id="currentAudio" controls>
+                        Your browser doesn't support the audio element
+                    </audio>
+                    <div class="volume-control">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                        </svg>
+                        <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="0.7">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button id="prevBtn" class="primary-btn" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M15 18l-6-6 6-6"></path>
+            </svg>
+            Previous
+        </button>
+        <button id="playPauseBtn" class="secondary-btn">
+            <svg id="playIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M5 3l14 9-14 9V3z"></path>
+            </svg>
+            <svg id="pauseIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display: none;">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+            <span id="playPauseText">Play</span>
+        </button>
+        <button id="nextBtn" class="primary-btn" disabled>
+            Next
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M9 18l6-6-6-6"></path>
+            </svg>
+        </button>
+        <button id="fullscreenBtn" class="accent-btn">
+            <svg id="fullscreenEnter" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+            </svg>
+            <svg id="fullscreenExit" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display: none;">
+                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>
+            </svg>
+            Fullscreen
+        </button>
+        <button id="preloadBtn" class="accent-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                <path d="M3 3v5h5"></path>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                <path d="M16 16h5v5"></path>
+            </svg>
+            <span id="preloadText">Enable Preload</span>
+        </button>
+    </div>
+
+    <script>
+        // Configuration - EDIT THESE TO MATCH YOUR FILES
+        const mediaFiles = [
+            { 
+                media: "image1.jpg", 
+                audio: "audio1.mp3", 
+                caption: "Beautiful landscape with mountains" 
+            },
+            { 
+                media: "animation1.gif", 
+                audio: "audio2.mp3", 
+                caption: "Animated scene with wildlife" 
+            },
+            { 
+                media: "image2.jpg", 
+                audio: "audio3.mp3", 
+                caption: "City skyline at sunset" 
+            }
+            // Add more files as needed
+        ];
+        
+        // State management
+        const state = {
+            currentIndex: 0,
+            isPlaying: false,
+            enablePreload: false,
+            currentTransition: 'fade',
+            audioDurations: [],
+            preloadedMedia: [],
+            timers: {
+                progress: null,
+                countdown: null,
+                transition: null
+            },
+            isPreloading: false
+        };
+        
+        // DOM elements cache
+        const elements = {
+            currentMedia: document.getElementById('currentMedia'),
+            nextMedia: document.getElementById('nextMedia'),
+            currentCaption: document.getElementById('currentCaption'),
+            prevBtn: document.getElementById('prevBtn'),
+            nextBtn: document.getElementById('nextBtn'),
+            playPauseBtn: document.getElementById('playPauseBtn'),
+            playPauseText: document.getElementById('playPauseText'),
+            playIcon: document.getElementById('playIcon'),
+            pauseIcon: document.getElementById('pauseIcon'),
+            fullscreenBtn: document.getElementById('fullscreenBtn'),
+            fullscreenEnter: document.getElementById('fullscreenEnter'),
+            fullscreenExit: document.getElementById('fullscreenExit'),
+            preloadBtn: document.getElementById('preloadBtn'),
+            preloadText: document.getElementById('preloadText'),
+            progressBar: document.getElementById('progressBar'),
+            currentAudio: document.getElementById('currentAudio'),
+            audioTitle: document.getElementById('audioTitle'),
+            countdown: document.getElementById('countdown'),
+            currentSlide: document.getElementById('currentSlide'),
+            totalSlides: document.getElementById('totalSlides'),
+            volumeSlider: document.getElementById('volumeSlider'),
+            transitionType: document.getElementById('transitionType'),
+            loader: document.getElementById('loader'),
+            errorMessage: document.getElementById('errorMessage')
+        };
+        
+        // Initialize the application
+        async function init() {
+            setupEventListeners();
+            await loadAudioDurations();
+            updateUI();
+            showSlide(state.currentIndex);
+        }
+        
+        // Load audio durations for all files
+        async function loadAudioDurations() {
+            try {
+                showLoading(true);
+                
+                state.audioDurations = await Promise.all(
+                    mediaFiles.map(file => getAudioDuration(file.audio))
+                );
+                
+                showError(false);
+            } catch (error) {
+                console.error("Error loading audio durations:", error);
+                showError(true, "Error loading audio files. Using default durations.");
+                
+                // Fallback to 3 seconds per slide
+                state.audioDurations = mediaFiles.map(() => 3000);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        // Get duration of an audio file
+        function getAudioDuration(audioFile) {
+            return new Promise((resolve) => {
+                const audio = new Audio();
+                audio.src = audioFile;
+                
+                const timeout = setTimeout(() => {
+                    resolve(3000); // Default duration if metadata takes too long
+                }, 2000);
+                
+                audio.addEventListener('loadedmetadata', () => {
+                    clearTimeout(timeout);
+                    resolve(audio.duration * 1000); // Convert to milliseconds
+                });
+                
+                audio.addEventListener('error', () => {
+                    clearTimeout(timeout);
+                    console.warn(`Failed to load audio: ${audioFile}`);
+                    resolve(3000); // Default duration
+                });
+            });
+        }
+        
+        // Preload media files
+        async function preloadMedia() {
+            if (!state.enablePreload) return;
+            
+            state.isPreloading = true;
+            showLoading(true);
+            state.preloadedMedia = [];
+            
+            for (const file of mediaFiles) {
+                try {
+                    await new Promise((resolve) => {
+                        const media = new Image();
+                        media.src = file.media;
+                        
+                        media.onload = () => {
+                            state.preloadedMedia.push(file.media);
+                            resolve();
+                        };
+                        
+                        media.onerror = () => {
+                            console.warn(`Failed to preload: ${file.media}`);
+                            resolve();
+                        };
+                    });
+                } catch (error) {
+                    console.error(`Error preloading ${file.media}:`, error);
+                }
+            }
+            
+            state.isPreloading = false;
+            showLoading(false);
+        }
+        
+        // Show loading indicator
+        function showLoading(show) {
+            elements.loader.style.display = show ? 'block' : 'none';
+        }
+        
+        // Show error message
+        function showError(show, message = "") {
+            elements.errorMessage.style.display = show ? 'block' : 'none';
+            if (show) elements.errorMessage.textContent = message;
+        }
+        
+        // Update UI elements
+        function updateUI() {
+            elements.currentSlide.textContent = state.currentIndex + 1;
+            elements.totalSlides.textContent = mediaFiles.length;
+            elements.preloadText.textContent = state.enablePreload ? 'Disable Preload' : 'Enable Preload';
+        }
+        
+        // Apply transition effect between slides
+        async function applyTransition(newIndex, direction = 'next') {
+            if (state.isPreloading) {
+                console.warn("Media still preloading, transition may not be smooth");
+                showSlideContent(newIndex);
+                return;
+            }
+            
+            const currentMedia = elements.currentMedia;
+            const nextMedia = elements.nextMedia;
+            const file = mediaFiles[newIndex];
+            
+            // Preload next media
+            nextMedia.src = file.media;
+            nextMedia.style.opacity = '0';
+            
+            // Wait for media to load
+            await new Promise(resolve => {
+                if (nextMedia.complete) {
+                    resolve();
+                } else {
+                    nextMedia.onload = resolve;
+                    nextMedia.onerror = resolve;
+                }
+            });
+            
+            // Apply transition effect
+            switch(state.currentTransition) {
+                case 'fade':
+                    currentMedia.classList.add('fade-out');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                case 'slide':
+                    currentMedia.classList.add(direction === 'next' ? 'slide-left' : 'slide-right');
+                    nextMedia.style.transform = direction === 'next' ? 'translateX(100%)' : 'translateX(-100%)';
+                    nextMedia.style.opacity = '1';
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                case 'zoom':
+                    currentMedia.classList.add('zoom-out');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                default:
+                    showSlideContent(newIndex);
+                    break;
+            }
+        }
+        
+        // Show slide content (without transition)
+        function showSlideContent(index) {
+            try {
+                state.currentIndex = index;
+                const file = mediaFiles[index];
+                
+                // Swap media elements
+                const temp = elements.currentMedia.src;
+                elements.currentMedia.src = elements.nextMedia.src;
+                elements.nextMedia.src = temp;
+                
+                // Reset styles
+                elements.currentMedia.classList.remove('fade-out', 'slide-left', 'slide-right', 'zoom-out');
+                elements.currentMedia.style.opacity = '1';
+                elements.currentMedia.style.transform = 'none';
+                elements.nextMedia.style.opacity = '0';
+                elements.nextMedia.style.transform = 'none';
+                
+                // Update caption
+                elements.currentCaption.textContent = file.caption;
+                
+                // Update audio
+                elements.currentAudio.src = file.audio;
+                elements.audioTitle.textContent = `Audio for Slide ${index + 1}`;
+                
+                // Play audio if autoplay is enabled
+                if (state.isPlaying) {
+                    elements.currentAudio.currentTime = 0;
+                    elements.currentAudio.play().catch(e => console.log("Autoplay prevented:", e));
+                }
+                
+                // Update UI
+                updateUI();
+                updateButtonStates();
+                
+                // Reset progress
+                elements.progressBar.style.width = '0%';
+            } catch (error) {
+                console.error("Error showing slide:", error);
+                showError(true, "Error displaying media. Please check your files.");
+            }
+        }
+        
+        // Show a specific slide with transition
+        function showSlide(index, direction = 'next') {
+            if (index < 0 || index >= mediaFiles.length) return;
+            
+            clearTimers();
+            applyTransition(index, direction);
+            
+            if (state.isPlaying) {
+                startAutoPlay();
+            }
+        }
+        
+        // Start auto-play using audio duration
+        function startAutoPlay() {
+            clearTimers();
+            
+            const duration = state.audioDurations[state.currentIndex] || 3000;
+            let secondsRemaining = Math.floor(duration / 1000);
+            
+            // Update countdown
+            updateCountdown(secondsRemaining);
+            
+            state.timers.countdown = setInterval(() => {
+                secondsRemaining--;
+                updateCountdown(secondsRemaining);
+                
+                if (secondsRemaining <= 0) {
+                    clearInterval(state.timers.countdown);
+                }
+            }, 1000);
+            
+            // Start transition timer
+            state.timers.transition = setTimeout(() => {
+                if (state.currentIndex < mediaFiles.length - 1) {
+                    showSlide(state.currentIndex + 1, 'next');
+                } else {
+                    showSlide(0, 'next'); // Loop to beginning
+                }
+            }, duration);
+            
+            // Animate progress bar
+            let progress = 0;
+            const increment = 100 / (duration / 100);
+            
+            state.timers.progress = setInterval(() => {
+                progress += increment;
+                elements.progressBar.style.width = Math.min(progress, 100) + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(state.timers.progress);
+                }
+            }, 100);
+        }
+        
+        // Update countdown display
+        function updateCountdown(seconds) {
+            elements.countdown.textContent = Math.max(0, seconds);
+        }
+        
+        // Clear all active timers
+        function clearTimers() {
+            Object.values(state.timers).forEach(timer => {
+                if (timer) clearInterval(timer);
+            });
+            
+            state.timers = {
+                progress: null,
+                countdown: null,
+                transition: null
+            };
+            
+            updateCountdown(0);
+        }
+        
+        // Toggle play/pause state
+        function togglePlayPause() {
+            state.isPlaying = !state.isPlaying;
+            
+            if (state.isPlaying) {
+                elements.playIcon.style.display = 'none';
+                elements.pauseIcon.style.display = 'block';
+                elements.playPauseText.textContent = 'Pause';
+                startAutoPlay();
+                elements.currentAudio.play().catch(e => console.log("Autoplay prevented:", e));
+            } else {
+                elements.playIcon.style.display = 'block';
+                elements.pauseIcon.style.display = 'none';
+                elements.playPauseText.textContent = 'Play';
+                clearTimers();
+                elements.currentAudio.pause();
+            }
+        }
+        
+        // Update button states
+        function updateButtonStates() {
+            elements.prevBtn.disabled = state.currentIndex === 0;
+            elements.nextBtn.disabled = state.currentIndex === mediaFiles.length - 1;
+        }
+        
+        // Toggle fullscreen mode
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen()
+                    .then(() => {
+                        elements.fullscreenEnter.style.display = 'none';
+                        elements.fullscreenExit.style.display = 'block';
+                    })
+                    .catch(err => {
+                        console.error("Fullscreen error:", err);
+                    });
+            } else {
+                document.exitFullscreen();
+                elements.fullscreenEnter.style.display = 'block';
+                elements.fullscreenExit.style.display = 'none';
+            }
+        }
+        
+        // Toggle media preloading
+        function togglePreloading() {
+            state.enablePreload = !state.enablePreload;
+            updateUI();
+            
+            if (state.enablePreload) {
+                preloadMedia();
+            } else {
+                state.preloadedMedia = [];
+            }
+        }
+        
+        // Handle keyboard shortcuts
+        function handleKeyDown(e) {
+            if (document.activeElement.tagName === 'INPUT' || 
+                document.activeElement.tagName === 'SELECT' || 
+                document.activeElement.tagName === 'BUTTON') {
+                return;
+            }
+            
+            switch(e.key) {
+                case 'ArrowLeft':
+                    if (state.currentIndex > 0) {
+                        showSlide(state.currentIndex - 1, 'prev');
+                    }
+                    break;
+                case 'ArrowRight':
+                case ' ':
+                    if (state.currentIndex < mediaFiles.length - 1) {
+                        showSlide(state.currentIndex + 1, 'next');
+                    }
+                    break;
+                case 'p':
+                    togglePlayPause();
+                    break;
+                case 'f':
+                    toggleFullscreen();
+                    break;
+            }
+        }
+        
+        // Handle touch events for swipe navigation
+        function handleTouchStart(e) {
+            this.touchStartX = e.changedTouches[0].screenX;
+        }
+        
+        function handleTouchEnd(e) {
+            const touchEndX = e.changedTouches[0].screenX;
+            const threshold = 50;
+            
+            if (touchEndX < this.touchStartX - threshold) {
+                // Swipe left - next
+                if (state.currentIndex < mediaFiles.length - 1) {
+                    showSlide(state.currentIndex + 1, 'next');
+                }
+            } else if (touchEndX > this.touchStartX + threshold) {
+                // Swipe right - previous
+                if (state.currentIndex > 0) {
+                    showSlide(state.currentIndex - 1, 'prev');
+                }
+            }
+        }
+        
+        // Set up all event listeners
+        function setupEventListeners() {
+            // Navigation buttons
+            elements.prevBtn.addEventListener('click', () => {
+                if (state.currentIndex > 0) {
+                    showSlide(state.currentIndex - 1, 'prev');
+                }
+            });
+            
+            elements.nextBtn.addEventListener('click', () => {
+                if (state.currentIndex < mediaFiles.length - 1) {
+                    showSlide(state.currentIndex + 1, 'next');
+                }
+            });
+            
+            // Play/pause toggle
+            elements.playPauseBtn.addEventListener('click', togglePlayPause);
+            
+            // Fullscreen toggle
+            elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
+            
+            // Preload toggle
+            elements.preloadBtn.addEventListener('click', togglePreloading);
+            
+            // Audio events
+            elements.currentAudio.addEventListener('play', () => {
+                if (!state.isPlaying) {
+                    state.isPlaying = true;
+                    elements.playIcon.style.display = 'none';
+                    elements.pauseIcon.style.display = 'block';
+                    elements.playPauseText.textContent = 'Pause';
+                    startAutoPlay();
+                }
+            });
+            
+            elements.currentAudio.addEventListener('pause', () => {
+                if (state.isPlaying) {
+                    state.isPlaying = false;
+                    elements.playIcon.style.display = 'block';
+                    elements.pauseIcon.style.display = 'none';
+                    elements.playPauseText.textContent = 'Play';
+                    clearTimers();
+                }
+            });
+            
+            elements.currentAudio.addEventListener('ended', () => {
+                if (state.isPlaying) {
+                    if (state.currentIndex < mediaFiles.length - 1) {
+                        showSlide(state.currentIndex + 1, 'next');
+                    } else {
+                        showSlide(0, 'next');
+                    }
+                }
+            });
+            
+            // Volume control
+            elements.volumeSlider.addEventListener('input', (e) => {
+                elements.currentAudio.volume = e.target.value;
+            });
+            
+            // Transition type selector
+            elements.transitionType.addEventListener('change', (e) => {
+                state.currentTransition = e.target.value;
+            });
+            
+            // Fullscreen change handler
+            document.addEventListener('fullscreenchange', () => {
+                const isFullscreen = !!document.fullscreenElement;
+                elements.fullscreenEnter.style.display = isFullscreen ? 'none' : 'block';
+                elements.fullscreenExit.style.display = isFullscreen ? 'block' : 'none';
+            });
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', handleKeyDown);
+            
+            // Touch events
+            const touchArea = document.body;
+            touchArea.touchStartX = 0;
+            touchArea.addEventListener('touchstart', handleTouchStart, { passive: true });
+            touchArea.addEventListener('touchend', handleTouchEnd, { passive: true });
+        }
+        
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
