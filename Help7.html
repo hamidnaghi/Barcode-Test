@@ -3,25 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate Media Sequence Viewer with Pointer</title>
+    <title>Media Viewer with Pointer</title>
     <style>
-        /* [Keep all your existing CSS styles] */
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .media-container {
+            position: relative;
+            width: 100%;
+            height: 500px;
+            background: #f1f1f1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        
+        .media-content {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .pointer {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            display: none;
+            transition: left 3s ease, top 3s ease;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        
+        .error {
+            color: red;
+            text-align: center;
+            margin: 20px 0;
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <!-- [Keep all your existing HTML structure] -->
+    <div class="media-container">
+        <img id="currentMedia" class="media-content" alt="Current media">
+        <div class="pointer" id="pointer"></div>
+    </div>
+    
+    <div id="currentCaption" style="text-align: center; margin-bottom: 20px;"></div>
+    
+    <div class="controls">
+        <button id="prevBtn">Previous</button>
+        <button id="playPauseBtn">Play</button>
+        <button id="nextBtn">Next</button>
+    </div>
+    
+    <div id="errorMessage" class="error"></div>
 
     <script>
-        // Configuration - EDIT THESE TO MATCH YOUR FILES
+        // Media configuration
         const mediaFiles = [
             { 
                 media: "pic1.jpg", 
                 audio: "sound1.mp3", 
                 caption: "برای اینکه مکالمه را از صحبت منفی در مورد کسی که در آن صحنه حضور ندارد دور کنید، می توانید به آرامی مکالمه را تغییر دهید و در مورد آن شخص غایب موارد مثبتی مطرح کنید, بدین ترتیب لحن محترمانه ای در گفتگو ادامه پیدا خواهد کرد.",
                 pointerPath: [
-                    { x: 20, y: 20, wait: 10000 },
-                    { x: 80, y: 30, wait: 15000 },
-                    { x: 50, y: 70, wait: 20000 }
+                    { x: 20, y: 20, wait: 3000 },
+                    { x: 80, y: 30, wait: 3000 },
+                    { x: 50, y: 70, wait: 3000 }
                 ]
             },
             { 
@@ -29,9 +96,9 @@
                 audio: "sound2.mp3", 
                 caption: "نپرسید کشورتان برای شما چه کرده است، بلکه بپرسید شما برای کشورتان چه کرده‌اید - جان اف کندی",
                 pointerPath: [
-                    { x: 10, y: 10, wait: 8000 },
-                    { x: 90, y: 20, wait: 12000 },
-                    { x: 40, y: 60, wait: 25000 }
+                    { x: 10, y: 10, wait: 3000 },
+                    { x: 90, y: 20, wait: 3000 },
+                    { x: 40, y: 60, wait: 3000 }
                 ]
             },
             { 
@@ -39,173 +106,99 @@
                 audio: "sound3.mp3", 
                 caption: "آن که پل‌های پشت سرش را به فراموشی می‌سپارد، دیر یا زود درمی‌یابد که راه پیش رو، بدون دست یاری دیگران، دشوارتر از آن است که می‌پنداشت.",
                 pointerPath: [
-                    { x: 30, y: 40, wait: 15000 },
-                    { x: 70, y: 50, wait: 18000 },
-                    { x: 20, y: 80, wait: 12000 }
+                    { x: 30, y: 40, wait: 3000 },
+                    { x: 70, y: 50, wait: 3000 },
+                    { x: 20, y: 80, wait: 3000 }
                 ]
             }
         ];
-        
+
         // State management
-        const state = {
-            currentIndex: 0,
-            isPlaying: false,
-            currentTransition: 'fade',
-            timers: {
-                progress: null,
-                countdown: null,
-                transition: null,
-                pointer: null
-            },
-            currentPointerPath: []
-        };
-        
-        // DOM elements cache
+        let currentIndex = 0;
+        let isPlaying = false;
+        let timers = [];
         const elements = {
             currentMedia: document.getElementById('currentMedia'),
-            nextMedia: document.getElementById('nextMedia'),
+            pointer: document.getElementById('pointer'),
             currentCaption: document.getElementById('currentCaption'),
             prevBtn: document.getElementById('prevBtn'),
             nextBtn: document.getElementById('nextBtn'),
             playPauseBtn: document.getElementById('playPauseBtn'),
-            playPauseText: document.getElementById('playPauseText'),
-            playIcon: document.getElementById('playIcon'),
-            pauseIcon: document.getElementById('pauseIcon'),
-            progressBar: document.getElementById('progressBar'),
-            currentAudio: document.getElementById('currentAudio'),
-            countdown: document.getElementById('countdown'),
-            currentSlide: document.getElementById('currentSlide'),
-            totalSlides: document.getElementById('totalSlides'),
-            pointer: document.getElementById('pointer'),
-            pointerPathBody: document.getElementById('pointerPathBody'),
             errorMessage: document.getElementById('errorMessage')
         };
 
         // Initialize the application
         function init() {
             setupEventListeners();
-            updateUI();
-            loadCurrentSlide();
+            loadSlide(currentIndex);
         }
 
-        function loadCurrentSlide() {
-            const file = mediaFiles[state.currentIndex];
-            
-            // Clear any previous errors
-            showError(false);
-            
-            // Set current pointer path
-            state.currentPointerPath = file.pointerPath || [];
-            updatePointerPathTable(state.currentPointerPath);
-            
-            // Load media
-            elements.currentMedia.src = file.media;
-            elements.currentMedia.onerror = () => {
-                showError(true, `Failed to load image: ${file.media}`);
-            };
-            
-            // Load audio
-            elements.currentAudio.src = file.audio;
-            elements.currentAudio.onerror = () => {
-                showError(true, `Failed to load audio: ${file.audio}`);
-            };
-            
-            // Update caption
-            elements.currentCaption.textContent = file.caption;
-            
-            // Update UI
-            updateUI();
-            
-            // If playing, start the sequence
-            if (state.isPlaying) {
-                startAutoPlay();
-            }
-        }
-
-        function startAutoPlay() {
+        function loadSlide(index) {
+            // Clear any existing timers
             clearTimers();
             
-            const file = mediaFiles[state.currentIndex];
-            const duration = file.pointerPath.reduce((sum, p) => sum + p.wait, 0) || 5000;
+            const slide = mediaFiles[index];
             
-            // Update countdown
-            let secondsRemaining = Math.floor(duration / 1000);
-            updateCountdown(secondsRemaining);
+            // Load media
+            elements.currentMedia.src = slide.media;
+            elements.currentMedia.onerror = () => {
+                showError(`Failed to load image: ${slide.media}`);
+            };
             
-            // Countdown timer
-            state.timers.countdown = setInterval(() => {
-                secondsRemaining--;
-                updateCountdown(secondsRemaining);
-            }, 1000);
+            // Load caption
+            elements.currentCaption.textContent = slide.caption;
             
-            // Progress bar animation
-            let progress = 0;
-            const increment = 100 / (duration / 100);
-            
-            state.timers.progress = setInterval(() => {
-                progress += increment;
-                elements.progressBar.style.width = Math.min(progress, 100) + '%';
-            }, 100);
-            
-            // Start pointer animation
-            movePointerAlongPath();
-            
-            // Set timer for next slide
-            state.timers.transition = setTimeout(() => {
-                if (state.currentIndex < mediaFiles.length - 1) {
-                    state.currentIndex++;
-                } else {
-                    state.currentIndex = 0; // Loop to start
-                }
-                loadCurrentSlide();
-            }, duration);
-            
-            // Play audio if available
-            elements.currentAudio.play().catch(e => {
-                console.log("Autoplay prevented:", e);
-            });
+            // If playing, start the sequence
+            if (isPlaying) {
+                startSequence(slide);
+            }
         }
 
-        function movePointerAlongPath() {
-            clearTimeout(state.timers.pointer);
+        function startSequence(slide) {
+            // Start pointer animation
+            animatePointer(slide.pointerPath);
             
-            const path = state.currentPointerPath;
-            if (!path || path.length === 0) {
-                elements.pointer.style.display = 'none';
-                return;
-            }
+            // Set timer for next slide
+            const totalDuration = slide.pointerPath.reduce((sum, point) => sum + point.wait + 3000, 0);
+            timers.push(setTimeout(() => {
+                nextSlide();
+            }, totalDuration));
+        }
+
+        function animatePointer(path) {
+            if (!path || path.length === 0) return;
             
-            let currentPointIndex = 0;
             elements.pointer.style.display = 'block';
+            let currentPoint = 0;
             
             function moveToNextPoint() {
-                if (currentPointIndex >= path.length) {
+                if (currentPoint >= path.length) {
                     elements.pointer.style.display = 'none';
                     return;
                 }
                 
-                const point = path[currentPointIndex];
+                const point = path[currentPoint];
                 const mediaRect = elements.currentMedia.getBoundingClientRect();
                 const containerRect = elements.currentMedia.parentElement.getBoundingClientRect();
                 
-                // Calculate positions
+                // Calculate position
                 const xPos = (point.x / 100) * mediaRect.width;
                 const yPos = (point.y / 100) * mediaRect.height;
                 const pointerX = containerRect.left + xPos;
                 const pointerY = containerRect.top + yPos;
                 
-                // Apply smooth transition
+                // Move pointer
                 elements.pointer.style.left = `${pointerX}px`;
                 elements.pointer.style.top = `${pointerY}px`;
                 
-                currentPointIndex++;
+                currentPoint++;
                 
-                if (currentPointIndex < path.length) {
-                    state.timers.pointer = setTimeout(moveToNextPoint, 3000 + path[currentPointIndex].wait);
+                if (currentPoint < path.length) {
+                    timers.push(setTimeout(moveToNextPoint, path[currentPoint].wait + 3000));
                 }
             }
             
-            // Initialize first position immediately without animation
+            // Initialize first position
             const firstPoint = path[0];
             const mediaRect = elements.currentMedia.getBoundingClientRect();
             const containerRect = elements.currentMedia.parentElement.getBoundingClientRect();
@@ -217,135 +210,61 @@
             elements.pointer.style.transition = 'none';
             elements.pointer.style.left = `${firstPointerX}px`;
             elements.pointer.style.top = `${firstPointerY}px`;
+            void elements.pointer.offsetWidth; // Force reflow
+            elements.pointer.style.transition = 'left 3s ease, top 3s ease';
             
-            // Force reflow
-            void elements.pointer.offsetWidth;
-            
-            // Enable transition for subsequent movements
-            elements.pointer.style.transition = 'left 3s ease-in-out, top 3s ease-in-out';
-            
-            // Start moving to next points
-            state.timers.pointer = setTimeout(() => {
-                moveToNextPoint();
-            }, firstPoint.wait);
+            // Start moving
+            timers.push(setTimeout(moveToNextPoint, firstPoint.wait));
         }
 
-        function updateUI() {
-            elements.currentSlide.textContent = state.currentIndex + 1;
-            elements.totalSlides.textContent = mediaFiles.length;
-            elements.prevBtn.disabled = state.currentIndex === 0;
-            elements.nextBtn.disabled = state.currentIndex === mediaFiles.length - 1;
-            
-            // Update play/pause button
-            if (state.isPlaying) {
-                elements.playIcon.style.display = 'none';
-                elements.pauseIcon.style.display = 'block';
-                elements.playPauseText.textContent = 'Pause';
+        function nextSlide() {
+            if (currentIndex < mediaFiles.length - 1) {
+                currentIndex++;
             } else {
-                elements.playIcon.style.display = 'block';
-                elements.pauseIcon.style.display = 'none';
-                elements.playPauseText.textContent = 'Play';
+                currentIndex = 0;
             }
+            loadSlide(currentIndex);
         }
 
-        function updatePointerPathTable(path) {
-            elements.pointerPathBody.innerHTML = '';
-            
-            path.forEach((point, index) => {
-                const row = document.createElement('tr');
-                
-                const pointCell = document.createElement('td');
-                pointCell.textContent = index + 1;
-                
-                const xCell = document.createElement('td');
-                xCell.textContent = `${point.x}%`;
-                
-                const yCell = document.createElement('td');
-                yCell.textContent = `${point.y}%`;
-                
-                const waitCell = document.createElement('td');
-                waitCell.textContent = point.wait;
-                
-                row.appendChild(pointCell);
-                row.appendChild(xCell);
-                row.appendChild(yCell);
-                row.appendChild(waitCell);
-                
-                elements.pointerPathBody.appendChild(row);
-            });
-        }
-
-        function updateCountdown(seconds) {
-            elements.countdown.textContent = Math.max(0, seconds);
-        }
-
-        function showError(show, message = "") {
-            elements.errorMessage.style.display = show ? 'block' : 'none';
-            if (show) elements.errorMessage.textContent = message;
-        }
-
-        function clearTimers() {
-            Object.values(state.timers).forEach(timer => {
-                if (timer) clearTimeout(timer);
-            });
-            
-            state.timers = {
-                progress: null,
-                countdown: null,
-                transition: null,
-                pointer: null
-            };
-            
-            updateCountdown(0);
-            elements.pointer.style.display = 'none';
+        function prevSlide() {
+            if (currentIndex > 0) {
+                currentIndex--;
+            } else {
+                currentIndex = mediaFiles.length - 1;
+            }
+            loadSlide(currentIndex);
         }
 
         function togglePlayPause() {
-            state.isPlaying = !state.isPlaying;
+            isPlaying = !isPlaying;
             
-            if (state.isPlaying) {
-                startAutoPlay();
+            if (isPlaying) {
+                elements.playPauseBtn.textContent = 'Pause';
+                startSequence(mediaFiles[currentIndex]);
             } else {
+                elements.playPauseBtn.textContent = 'Play';
                 clearTimers();
-                elements.currentAudio.pause();
             }
-            
-            updateUI();
+        }
+
+        function clearTimers() {
+            timers.forEach(timer => clearTimeout(timer));
+            timers = [];
+            elements.pointer.style.display = 'none';
+        }
+
+        function showError(message) {
+            elements.errorMessage.textContent = message;
+            elements.errorMessage.style.display = 'block';
         }
 
         function setupEventListeners() {
-            // Navigation buttons
-            elements.prevBtn.addEventListener('click', () => {
-                if (state.currentIndex > 0) {
-                    state.currentIndex--;
-                    loadCurrentSlide();
-                }
-            });
-            
-            elements.nextBtn.addEventListener('click', () => {
-                if (state.currentIndex < mediaFiles.length - 1) {
-                    state.currentIndex++;
-                    loadCurrentSlide();
-                }
-            });
-            
-            // Play/pause toggle
+            elements.prevBtn.addEventListener('click', prevSlide);
+            elements.nextBtn.addEventListener('click', nextSlide);
             elements.playPauseBtn.addEventListener('click', togglePlayPause);
-            
-            // Audio ended handler
-            elements.currentAudio.addEventListener('ended', () => {
-                if (state.isPlaying) {
-                    if (state.currentIndex < mediaFiles.length - 1) {
-                        state.currentIndex++;
-                    } else {
-                        state.currentIndex = 0;
-                    }
-                    loadCurrentSlide();
-                }
-            });
         }
 
-        // Initialize the application
+        // Start the application
         document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
