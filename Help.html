@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Playing Sequence with Paired Files</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .image-container {
+            margin: 20px 0;
+        }
+        .image-container img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 400px;
+        }
+        .caption {
+            margin-top: 10px;
+            font-size: 18px;
+            min-height: 50px;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+        #modalSound {
+            width: 100%;
+            margin-top: 20px;
+        }
+        .progress-container {
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .progress-bar {
+            height: 10px;
+            background-color: #4CAF50;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+    <h1>Auto-Playing Sequence with Paired Files</h1>
+    
+    <div class="image-container">
+        <img id="currentImage" src="" alt="Sequence Image">
+        <div id="currentCaption" class="caption">Loading...</div>
+    </div>
+    
+    <div class="progress-container">
+        <div id="progressBar" class="progress-bar"></div>
+    </div>
+    
+    <div class="controls">
+        <button id="playPauseBtn">Pause</button>
+        <button id="prevBtn">Previous</button>
+        <button id="nextBtn">Next</button>
+        <button id="openModalBtn">Play Sound</button>
+    </div>
+    
+    <div id="soundModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Now Playing</h2>
+            <p id="modalTitle">Audio for current slide</p>
+            <audio id="modalSound" controls>
+                Your browser does not support the audio element.
+            </audio>
+        </div>
+    </div>
+    
+    <script>
+        // Configuration - EDIT THESE TO MATCH YOUR FILE NAMES
+        const imageFiles = [
+            "image1.jpg",
+            "image2.jpg",
+            "image3.jpg"
+            // Add more images as needed
+        ];
+        const transitionTime = 3000; // 3 seconds per slide
+        
+        // State variables
+        let currentIndex = 0;
+        let isPlaying = true;
+        let intervalId = null;
+        let captions = [];
+        let audioFiles = [];
+        
+        // DOM elements
+        const currentImage = document.getElementById('currentImage');
+        const currentCaption = document.getElementById('currentCaption');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const openModalBtn = document.getElementById('openModalBtn');
+        const progressBar = document.getElementById('progressBar');
+        const modalSound = document.getElementById('modalSound');
+        const modalTitle = document.getElementById('modalTitle');
+        const modal = document.getElementById('soundModal');
+        const closeBtn = document.getElementsByClassName('close')[0];
+        
+        // Initialize the sequence
+        async function initializeSequence() {
+            // Load all text files
+            captions = await Promise.all(
+                imageFiles.map(img => {
+                    const txtFile = img.replace(/\.[^/.]+$/, "") + ".txt";
+                    return fetchTextFile(txtFile);
+                })
+            );
+            
+            // Generate audio file names
+            audioFiles = imageFiles.map(img => {
+                return img.replace(/\.[^/.]+$/, "") + ".mp3";
+            });
+            
+            // Show first slide
+            showSlide(0);
+            
+            // Start autoplay
+            startAutoPlay();
+        }
+        
+        // Fetch text file content
+        async function fetchTextFile(filename) {
+            try {
+                const response = await fetch(filename);
+                if (!response.ok) throw new Error("File not found");
+                return await response.text();
+            } catch (error) {
+                console.error(`Error loading ${filename}:`, error);
+                return `Text for ${filename} not available`;
+            }
+        }
+        
+        // Show a specific slide
+        function showSlide(index) {
+            currentIndex = index;
+            currentImage.src = imageFiles[index];
+            currentCaption.textContent = captions[index] || `Description for ${imageFiles[index]}`;
+            
+            // Update modal sound source
+            modalSound.src = audioFiles[index];
+            modalTitle.textContent = `Audio for ${imageFiles[index].replace(/\.[^/.]+$/, "")}`;
+            
+            // Update button states
+            prevBtn.disabled = index === 0;
+            nextBtn.disabled = index === imageFiles.length - 1;
+            
+            // Reset progress bar
+            progressBar.style.width = '0%';
+        }
+        
+        // Start auto-play
+        function startAutoPlay() {
+            if (intervalId) clearInterval(intervalId);
+            
+            intervalId = setInterval(() => {
+                if (currentIndex < imageFiles.length - 1) {
+                    currentIndex++;
+                } else {
+                    currentIndex = 0; // Loop back to start
+                }
+                showSlide(currentIndex);
+            }, transitionTime);
+            
+            // Animate progress bar
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 1;
+                progressBar.style.width = progress + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                }
+            }, transitionTime / 100);
+        }
+        
+        // Pause auto-play
+        function pauseAutoPlay() {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+        }
+        
+        // Toggle play/pause
+        function togglePlayPause() {
+            isPlaying = !isPlaying;
+            
+            if (isPlaying) {
+                startAutoPlay();
+                playPauseBtn.textContent = 'Pause';
+            } else {
+                pauseAutoPlay();
+                playPauseBtn.textContent = 'Play';
+            }
+        }
+        
+        // Event listeners
+        prevBtn.addEventListener('click', () => {
+            if (currentIndex > 0) {
+                pauseAutoPlay();
+                showSlide(currentIndex - 1);
+                if (isPlaying) startAutoPlay();
+            }
+        });
+        
+        nextBtn.addEventListener('click', () => {
+            if (currentIndex < imageFiles.length - 1) {
+                pauseAutoPlay();
+                showSlide(currentIndex + 1);
+                if (isPlaying) startAutoPlay();
+            }
+        });
+        
+        playPauseBtn.addEventListener('click', togglePlayPause);
+        
+        openModalBtn.addEventListener('click', () => {
+            modal.style.display = 'block';
+            modalSound.currentTime = 0;
+            modalSound.play().catch(e => console.log("Autoplay prevented:", e));
+        });
+        
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+            modalSound.pause();
+        });
+        
+        window.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+                modalSound.pause();
+            }
+        });
+        
+        // Initialize the sequence
+        initializeSequence();
+    </script>
+</body>
+</html>
