@@ -71,6 +71,7 @@
             pointer-events: none;
             display: none;
             box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.8);
+            transition: left 3s ease-in-out, top 3s ease-in-out; /* Smooth transition over 3 seconds */
         }
         
         .pointer::after {
@@ -433,7 +434,7 @@
             { 
                 media: "image1.jpg", 
                 audio: "image3.mp3", 
-                caption: "Text 1",
+                caption: "برای اینکه مکالمه را از صحبت منفی در مورد کسی که در آن صحنه حضور ندارد دور کنید، می توانید به آرامی مکالمه را تغییر دهید و در مورد آن شخص غایب موارد مثبتی مطرح کنید, بدین ترتیب لحن محترمانه ای در گفتگو ادامه پیدا خواهد کرد.",
                 pointerPath: [
                     { x: 20, y: 20, wait: 10000 },
                     { x: 80, y: 30, wait: 15000 },
@@ -443,7 +444,7 @@
             { 
                 media: "image3.gif", 
                 audio: "hamid.mp3", 
-                caption: "Text2",
+                caption: "نپرسید کشورتان برای شما چه کرده است، بلکه بپرسید شما برای کشورتان چه کرده‌اید - جان اف کندی",
                 pointerPath: [
                     { x: 10, y: 10, wait: 8000 },
                     { x: 90, y: 20, wait: 12000 },
@@ -674,19 +675,43 @@
                 const pointerX = containerRect.left + xPos;
                 const pointerY = containerRect.top + yPos;
                 
+                // Apply smooth transition
                 elements.pointer.style.left = `${pointerX}px`;
                 elements.pointer.style.top = `${pointerY}px`;
                 
                 currentPointIndex++;
                 
                 if (currentPointIndex < path.length) {
-                    state.timers.pointer = setTimeout(moveToNextPoint, point.wait);
+                    // Wait for the transition to complete plus the specified wait time
+                    state.timers.pointer = setTimeout(moveToNextPoint, 3000 + point.wait);
                 } else {
                     elements.pointer.style.display = 'none';
                 }
             }
             
-            moveToNextPoint();
+            // Start with the first point immediately
+            const firstPoint = path[0];
+            const mediaRect = elements.currentMedia.getBoundingClientRect();
+            const firstXPos = (firstPoint.x / 100) * mediaRect.width;
+            const firstYPos = (firstPoint.y / 100) * mediaRect.height;
+            const containerRect = elements.currentMedia.parentElement.getBoundingClientRect();
+            const firstPointerX = containerRect.left + firstXPos;
+            const firstPointerY = containerRect.top + firstYPos;
+            
+            elements.pointer.style.transition = 'none'; // Disable transition for initial position
+            elements.pointer.style.left = `${firstPointerX}px`;
+            elements.pointer.style.top = `${firstPointerY}px`;
+            
+            // Force reflow to apply initial position
+            void elements.pointer.offsetWidth;
+            
+            // Enable transition for subsequent movements
+            elements.pointer.style.transition = 'left 3s ease-in-out, top 3s ease-in-out';
+            
+            // Start moving to next points after initial wait time
+            state.timers.pointer = setTimeout(() => {
+                moveToNextPoint();
+            }, firstPoint.wait);
         }
         
         // Apply transition effect between slides
@@ -702,44 +727,53 @@
             const file = mediaFiles[newIndex];
             
             // Preload next media
-            nextMedia.src = file.media;
-            nextMedia.style.opacity = '0';
-            
-            // Wait for media to load
-            await new Promise(resolve => {
-                if (nextMedia.complete) {
-                    resolve();
-                } else {
-                    nextMedia.onload = resolve;
-                    nextMedia.onerror = resolve;
+            try {
+                nextMedia.src = file.media;
+                nextMedia.onerror = () => {
+                    console.error("Error loading media:", file.media);
+                    showError(true, "Error displaying media. Please check your files.");
+                };
+                nextMedia.style.opacity = '0';
+                
+                // Wait for media to load
+                await new Promise(resolve => {
+                    if (nextMedia.complete) {
+                        resolve();
+                    } else {
+                        nextMedia.onload = resolve;
+                        nextMedia.onerror = resolve;
+                    }
+                });
+                
+                // Apply transition effect
+                switch(state.currentTransition) {
+                    case 'fade':
+                        currentMedia.classList.add('fade-out');
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        showSlideContent(newIndex);
+                        break;
+                        
+                    case 'slide':
+                        currentMedia.classList.add(direction === 'next' ? 'slide-left' : 'slide-right');
+                        nextMedia.style.transform = direction === 'next' ? 'translateX(100%)' : 'translateX(-100%)';
+                        nextMedia.style.opacity = '1';
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        showSlideContent(newIndex);
+                        break;
+                        
+                    case 'zoom':
+                        currentMedia.classList.add('zoom-out');
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        showSlideContent(newIndex);
+                        break;
+                        
+                    default:
+                        showSlideContent(newIndex);
+                        break;
                 }
-            });
-            
-            // Apply transition effect
-            switch(state.currentTransition) {
-                case 'fade':
-                    currentMedia.classList.add('fade-out');
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    showSlideContent(newIndex);
-                    break;
-                    
-                case 'slide':
-                    currentMedia.classList.add(direction === 'next' ? 'slide-left' : 'slide-right');
-                    nextMedia.style.transform = direction === 'next' ? 'translateX(100%)' : 'translateX(-100%)';
-                    nextMedia.style.opacity = '1';
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    showSlideContent(newIndex);
-                    break;
-                    
-                case 'zoom':
-                    currentMedia.classList.add('zoom-out');
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    showSlideContent(newIndex);
-                    break;
-                    
-                default:
-                    showSlideContent(newIndex);
-                    break;
+            } catch (error) {
+                console.error("Error during transition:", error);
+                showError(true, "Error displaying media. Please check your files.");
             }
         }
         
@@ -785,6 +819,9 @@
                 
                 // Reset progress
                 elements.progressBar.style.width = '0%';
+                
+                // Clear any previous errors
+                showError(false);
             } catch (error) {
                 console.error("Error showing slide:", error);
                 showError(true, "Error displaying media. Please check your files.");
