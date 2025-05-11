@@ -6,25 +6,41 @@
     <title>Presentation Editor</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
         }
         .editor-container {
             display: flex;
-            gap: 20px;
+            gap: 30px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         .preview-pane {
             flex: 1;
             position: relative;
-            border: 1px solid #ccc;
+            border: 2px dashed #ccc;
             height: 500px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f9f9f9;
+            border-radius: 4px;
         }
         .edit-pane {
             flex: 1;
             display: flex;
             flex-direction: column;
+            gap: 20px;
         }
         #previewImage {
             max-width: 100%;
@@ -33,26 +49,79 @@
         }
         .pointer {
             position: absolute;
-            width: 20px;
-            height: 20px;
-            background-color: red;
+            width: 24px;
+            height: 24px;
+            background-color: #e74c3c;
             border-radius: 50%;
             transform: translate(-50%, -50%);
             cursor: move;
+            border: 2px solid white;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
         }
-        .controls {
-            margin-top: 20px;
+        .file-inputs {
             display: flex;
-            gap: 10px;
+            flex-direction: column;
+            gap: 15px;
         }
-        button {
-            padding: 8px 16px;
-            cursor: pointer;
+        .file-input-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .file-input-group label {
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #34495e;
+        }
+        .caption-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .caption-group label {
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #34495e;
         }
         textarea {
             width: 100%;
             height: 100px;
-            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        .point-controls {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #eee;
+        }
+        .point-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        button {
+            padding: 8px 16px;
+            cursor: pointer;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        #removePointBtn {
+            background-color: #e74c3c;
+        }
+        #removePointBtn:hover {
+            background-color: #c0392b;
         }
         table {
             width: 100%;
@@ -61,19 +130,54 @@
         }
         th, td {
             border: 1px solid #ddd;
-            padding: 8px;
+            padding: 10px;
             text-align: left;
         }
         th {
             background-color: #f2f2f2;
+            font-weight: 600;
         }
-        .point-controls {
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        input[type="number"] {
+            width: 70px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
             margin-top: 20px;
+            justify-content: center;
+        }
+        .slide-counter {
+            text-align: center;
+            margin: 10px 0;
+            font-weight: 500;
+            color: #7f8c8d;
+        }
+        #saveBtn {
+            background-color: #2ecc71;
+        }
+        #saveBtn:hover {
+            background-color: #27ae60;
+        }
+        #loadBtn {
+            background-color: #f39c12;
+        }
+        #loadBtn:hover {
+            background-color: #d35400;
         }
     </style>
 </head>
 <body>
     <h1>Presentation Editor</h1>
+    
+    <div class="slide-counter">
+        Slide <span id="currentSlideNumber">1</span> of <span id="totalSlides">1</span>
+    </div>
     
     <div class="editor-container">
         <div class="preview-pane" id="previewPane">
@@ -82,25 +186,35 @@
         </div>
         
         <div class="edit-pane">
-            <div>
-                <label>Media File: <input type="file" id="mediaFile"></label>
-                <label>Audio File: <input type="file" id="audioFile"></label>
+            <div class="file-inputs">
+                <div class="file-input-group">
+                    <label for="mediaFile">Media File:</label>
+                    <input type="file" id="mediaFile" accept="image/*, video/*">
+                </div>
+                
+                <div class="file-input-group">
+                    <label for="audioFile">Audio File:</label>
+                    <input type="file" id="audioFile" accept="audio/*">
+                </div>
             </div>
             
-            <label>Caption:
-                <textarea id="captionText"></textarea>
-            </label>
+            <div class="caption-group">
+                <label for="captionText">Caption:</label>
+                <textarea id="captionText" placeholder="Enter slide caption..."></textarea>
+            </div>
             
             <div class="point-controls">
                 <h3>Pointer Path</h3>
-                <button id="addPointBtn">Add Point</button>
-                <button id="removePointBtn">Remove Last Point</button>
+                <div class="point-buttons">
+                    <button id="addPointBtn">Add Point</button>
+                    <button id="removePointBtn">Remove Last Point</button>
+                </div>
                 
                 <table id="pointsTable">
                     <thead>
                         <tr>
-                            <th>X</th>
-                            <th>Y</th>
+                            <th>X Position</th>
+                            <th>Y Position</th>
                             <th>Wait (ms)</th>
                             <th>Actions</th>
                         </tr>
@@ -139,7 +253,9 @@
             prevSlideBtn: document.getElementById('prevSlideBtn'),
             nextSlideBtn: document.getElementById('nextSlideBtn'),
             saveBtn: document.getElementById('saveBtn'),
-            loadBtn: document.getElementById('loadBtn')
+            loadBtn: document.getElementById('loadBtn'),
+            currentSlideNumber: document.getElementById('currentSlideNumber'),
+            totalSlides: document.getElementById('totalSlides')
         };
 
         // Initialize
@@ -181,6 +297,7 @@
             // Add point button
             elements.addPointBtn.addEventListener('click', function() {
                 const slide = presentation.slides[presentation.currentSlideIndex];
+                if (!slide.pointerPath) slide.pointerPath = [];
                 slide.pointerPath.push({ x: 50, y: 50, wait: 3000 });
                 updatePointsTable();
             });
@@ -188,7 +305,7 @@
             // Remove point button
             elements.removePointBtn.addEventListener('click', function() {
                 const slide = presentation.slides[presentation.currentSlideIndex];
-                if (slide.pointerPath.length > 0) {
+                if (slide.pointerPath && slide.pointerPath.length > 0) {
                     slide.pointerPath.pop();
                     updatePointsTable();
                 }
@@ -202,6 +319,7 @@
                     const y = ((e.clientY - rect.top) / rect.height) * 100;
                     
                     const slide = presentation.slides[presentation.currentSlideIndex];
+                    if (!slide.pointerPath) slide.pointerPath = [];
                     slide.pointerPath.push({ 
                         x: Math.round(x), 
                         y: Math.round(y), 
@@ -238,15 +356,30 @@
             elements.previewImage.src = slide.media ? slide.media : '';
             
             // Update form fields
-            elements.captionText.value = slide.caption;
+            elements.captionText.value = slide.caption || '';
+            elements.mediaFile.value = '';
+            elements.audioFile.value = '';
             
             // Update points table
             updatePointsTable();
+            
+            // Update slide counter
+            elements.currentSlideNumber.textContent = presentation.currentSlideIndex + 1;
+            elements.totalSlides.textContent = presentation.slides.length;
+            
+            // Update button states
+            elements.prevSlideBtn.disabled = presentation.currentSlideIndex === 0;
+            elements.removePointBtn.disabled = !slide.pointerPath || slide.pointerPath.length === 0;
         }
 
         function updatePointsTable() {
             const slide = presentation.slides[presentation.currentSlideIndex];
             elements.pointsTable.innerHTML = '';
+            
+            if (!slide.pointerPath || slide.pointerPath.length === 0) {
+                elements.removePointBtn.disabled = true;
+                return;
+            }
             
             slide.pointerPath.forEach((point, index) => {
                 const row = document.createElement('tr');
@@ -255,9 +388,11 @@
                 const xCell = document.createElement('td');
                 const xInput = document.createElement('input');
                 xInput.type = 'number';
+                xInput.min = '0';
+                xInput.max = '100';
                 xInput.value = point.x;
                 xInput.addEventListener('change', function() {
-                    point.x = parseInt(this.value);
+                    point.x = parseInt(this.value) || 0;
                 });
                 xCell.appendChild(xInput);
                 
@@ -265,9 +400,11 @@
                 const yCell = document.createElement('td');
                 const yInput = document.createElement('input');
                 yInput.type = 'number';
+                yInput.min = '0';
+                yInput.max = '100';
                 yInput.value = point.y;
                 yInput.addEventListener('change', function() {
-                    point.y = parseInt(this.value);
+                    point.y = parseInt(this.value) || 0;
                 });
                 yCell.appendChild(yInput);
                 
@@ -275,9 +412,10 @@
                 const waitCell = document.createElement('td');
                 const waitInput = document.createElement('input');
                 waitInput.type = 'number';
+                waitInput.min = '0';
                 waitInput.value = point.wait;
                 waitInput.addEventListener('change', function() {
-                    point.wait = parseInt(this.value);
+                    point.wait = parseInt(this.value) || 0;
                 });
                 waitCell.appendChild(waitInput);
                 
@@ -285,6 +423,8 @@
                 const actionsCell = document.createElement('td');
                 const previewBtn = document.createElement('button');
                 previewBtn.textContent = 'Preview';
+                previewBtn.style.backgroundColor = '#9b59b6';
+                previewBtn.style.padding = '5px 10px';
                 previewBtn.addEventListener('click', function() {
                     previewPoint(point);
                 });
@@ -292,6 +432,9 @@
                 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.textContent = 'Delete';
+                deleteBtn.style.backgroundColor = '#e74c3c';
+                deleteBtn.style.padding = '5px 10px';
+                deleteBtn.style.marginLeft = '5px';
                 deleteBtn.addEventListener('click', function() {
                     slide.pointerPath.splice(index, 1);
                     updatePointsTable();
@@ -306,6 +449,8 @@
                 
                 elements.pointsTable.appendChild(row);
             });
+            
+            elements.removePointBtn.disabled = slide.pointerPath.length === 0;
         }
 
         function previewPoint(point) {
@@ -399,7 +544,8 @@
             input.click();
         }
 
-        // [Keep the rest of the JavaScript the same]
+        // Initialize the editor
+        init();
     </script>
 </body>
 </html>
