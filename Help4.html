@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Media Sequence Viewer</title>
+    <style>
+        :root {
+            --primary-color: #4CAF50;
+            --hover-color: #45a049;
+            --disabled-color: #cccccc;
+            --progress-color: #4CAF50;
+            --text-color: #333;
+            --bg-color: #f9f9f9;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            touch-action: pan-y;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 25px;
+            color: var(--primary-color);
+        }
+        
+        .viewer-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        
+        .media-container {
+            position: relative;
+            margin: 0 auto;
+            width: 100%;
+            height: 450px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f0f0f0;
+            border-radius: 8px;
+        }
+        
+        .media-content {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: all 0.5s ease;
+            position: absolute;
+        }
+        
+        /* Transition effects */
+        .fade-out { opacity: 0; }
+        .slide-left { transform: translateX(-100%); }
+        .slide-right { transform: translateX(100%); }
+        .zoom-out { transform: scale(0.8); opacity: 0; }
+        
+        .caption {
+            margin: 15px 0;
+            font-size: 18px;
+            min-height: 50px;
+            text-align: center;
+            padding: 10px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 5px;
+        }
+        
+        .progress-container {
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+            margin: 20px 0;
+            position: relative;
+            height: 12px;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background-color: var(--progress-color);
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        
+        .slide-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        
+        .slide-counter, .timer-display {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            min-width: 100px;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: var(--hover-color);
+        }
+        
+        button:disabled {
+            background-color: var(--disabled-color);
+            cursor: not-allowed;
+        }
+        
+        .settings-panel {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 8px;
+        }
+        
+        .setting-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        select, input[type="range"] {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        
+        /* Audio player styles */
+        .audio-player {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 8px;
+        }
+        
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        /* Fullscreen styles */
+        :fullscreen .viewer-container {
+            width: 100%;
+            height: 100%;
+            max-width: none;
+            border-radius: 0;
+        }
+        
+        :fullscreen .media-container {
+            height: 80vh;
+        }
+        
+        /* Loading indicator */
+        .loader {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid var(--primary-color);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+        /* Error message */
+        .error-message {
+            color: #d32f2f;
+            text-align: center;
+            margin: 10px 0;
+            display: none;
+        }
+        
+        .toggle-preload {
+            background-color: #2196F3;
+        }
+        
+        .toggle-preload:hover {
+            background-color: #0b7dda;
+        }
+    </style>
+</head>
+<body>
+    <h1>Advanced Media Sequence Viewer</h1>
+    
+    <div class="settings-panel">
+        <div class="setting-group">
+            <label for="transitionType">Transition Effect:</label>
+            <select id="transitionType">
+                <option value="fade">Fade</option>
+                <option value="slide">Slide</option>
+                <option value="zoom">Zoom</option>
+                <option value="none">None</option>
+            </select>
+        </div>
+    </div>
+    
+    <div class="error-message" id="errorMessage"></div>
+    
+    <div class="viewer-container">
+        <div class="slide-info">
+            <div class="slide-counter">Slide: <span id="currentSlide">1</span>/<span id="totalSlides">0</span></div>
+            <div class="timer-display">Next in: <span id="countdown">0</span>s</div>
+        </div>
+        
+        <div class="progress-container">
+            <div id="progressBar" class="progress-bar"></div>
+        </div>
+        
+        <div class="media-container">
+            <div class="loader" id="loader"></div>
+            <img id="currentMedia" class="media-content" src="" alt="Slide media">
+            <img id="nextMedia" class="media-content" src="" alt="Next slide" style="opacity: 0;">
+        </div>
+        
+        <div id="currentCaption" class="caption">Loading slides...</div>
+        
+        <div class="audio-player">
+            <h3>Audio Player</h3>
+            <p id="audioTitle">Current Slide Audio</p>
+            <div class="audio-controls">
+                <audio id="currentAudio" controls>
+                    Your browser does not support the audio element.
+                </audio>
+                <div class="volume-control">
+                    <label for="volumeSlider">Volume:</label>
+                    <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="0.7">
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button id="playPauseBtn">Pause</button>
+        <button id="prevBtn" disabled>Previous</button>
+        <button id="nextBtn" disabled>Next</button>
+        <button id="fullscreenBtn">Fullscreen</button>
+        <button id="preloadBtn" class="toggle-preload">Enable Preloading</button>
+    </div>
+
+    <script>
+        // Configuration - EDIT THESE TO MATCH YOUR FILES
+        const mediaFiles = [
+            { image: "image1.jpg", audio: "audio1.mp3", caption: "Caption for image 1" },
+            { image: "animation1.gif", audio: "audio2.mp3", caption: "Caption for animation 1" },
+            { image: "image2.jpg", audio: "audio3.mp3", caption: "Caption for image 2" }
+            // Add more files as needed
+        ];
+        
+        // State variables
+        let currentIndex = 0;
+        let isPlaying = true;
+        let intervalId = null;
+        let countdownId = null;
+        let currentTransition = 'fade';
+        let audioDurations = [];
+        let preloadedMedia = [];
+        let isPreloading = false;
+        let enablePreloading = false;
+        
+        // DOM elements
+        const elements = {
+            currentMedia: document.getElementById('currentMedia'),
+            nextMedia: document.getElementById('nextMedia'),
+            currentCaption: document.getElementById('currentCaption'),
+            prevBtn: document.getElementById('prevBtn'),
+            nextBtn: document.getElementById('nextBtn'),
+            playPauseBtn: document.getElementById('playPauseBtn'),
+            fullscreenBtn: document.getElementById('fullscreenBtn'),
+            preloadBtn: document.getElementById('preloadBtn'),
+            progressBar: document.getElementById('progressBar'),
+            currentAudio: document.getElementById('currentAudio'),
+            audioTitle: document.getElementById('audioTitle'),
+            countdown: document.getElementById('countdown'),
+            currentSlide: document.getElementById('currentSlide'),
+            totalSlides: document.getElementById('totalSlides'),
+            volumeSlider: document.getElementById('volumeSlider'),
+            transitionType: document.getElementById('transitionType'),
+            loader: document.getElementById('loader'),
+            errorMessage: document.getElementById('errorMessage')
+        };
+        
+        // Initialize the application
+        async function init() {
+            setupEventListeners();
+            await loadAudioDurations();
+            updateSlideCounter();
+            showSlide(currentIndex);
+            if (isPlaying) startAutoPlay();
+        }
+        
+        // Load audio durations for all files
+        async function loadAudioDurations() {
+            try {
+                showLoading(true);
+                
+                // Load audio durations
+                audioDurations = await Promise.all(
+                    mediaFiles.map(file => getAudioDuration(file.audio))
+                );
+                
+                showError(false);
+            } catch (error) {
+                console.error("Error loading audio durations:", error);
+                showError(true, "Error loading audio files. Please check your files.");
+                
+                // Fallback to default duration (3 seconds) if audio loading fails
+                audioDurations = mediaFiles.map(() => 3000);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        // Get duration of an audio file
+        function getAudioDuration(audioFile) {
+            return new Promise((resolve) => {
+                const audio = new Audio();
+                audio.src = audioFile;
+                
+                audio.addEventListener('loadedmetadata', () => {
+                    resolve(audio.duration * 1000); // Convert to milliseconds
+                });
+                
+                audio.addEventListener('error', () => {
+                    console.warn(`Failed to load audio: ${audioFile}`);
+                    resolve(3000); // Default duration if audio fails to load
+                });
+            });
+        }
+        
+        // Preload media files if enabled
+        async function preloadMedia() {
+            if (!enablePreloading) return;
+            
+            isPreloading = true;
+            showLoading(true);
+            preloadedMedia = [];
+            
+            for (const file of mediaFiles) {
+                try {
+                    await new Promise((resolve) => {
+                        // Handle both images and GIFs
+                        const media = new Image();
+                        media.src = file.image;
+                        
+                        media.onload = () => {
+                            preloadedMedia.push(file.image);
+                            resolve();
+                        };
+                        
+                        media.onerror = () => {
+                            console.warn(`Failed to load media: ${file.image}`);
+                            preloadedMedia.push(file.image); // Still add to array but will fail when displayed
+                            resolve();
+                        };
+                    });
+                } catch (error) {
+                    console.error(`Error preloading media ${file.image}:`, error);
+                }
+            }
+            
+            isPreloading = false;
+            showLoading(false);
+        }
+        
+        // Show or hide loading indicator
+        function showLoading(show) {
+            elements.loader.style.display = show ? 'block' : 'none';
+        }
+        
+        // Show or hide error message
+        function showError(show, message = "") {
+            elements.errorMessage.style.display = show ? 'block' : 'none';
+            if (show) elements.errorMessage.textContent = message;
+        }
+        
+        // Update the slide counter display
+        function updateSlideCounter() {
+            elements.currentSlide.textContent = currentIndex + 1;
+            elements.totalSlides.textContent = mediaFiles.length;
+        }
+        
+        // Apply transition effect between slides
+        async function applyTransition(newIndex, direction = 'next') {
+            if (isPreloading) {
+                console.warn("Media still preloading, transition may not be smooth");
+                showSlideContent(newIndex);
+                return;
+            }
+            
+            const currentMedia = elements.currentMedia;
+            const nextMedia = elements.nextMedia;
+            
+            // Preload next media
+            nextMedia.src = mediaFiles[newIndex].image;
+            nextMedia.style.opacity = '0';
+            
+            // Wait for next media to load
+            await new Promise(resolve => {
+                if (nextMedia.complete) {
+                    resolve();
+                } else {
+                    nextMedia.onload = resolve;
+                    nextMedia.onerror = resolve;
+                }
+            });
+            
+            // Apply transition based on selected type
+            switch(currentTransition) {
+                case 'fade':
+                    currentMedia.classList.add('fade-out');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                case 'slide':
+                    currentMedia.classList.add(direction === 'next' ? 'slide-left' : 'slide-right');
+                    nextMedia.style.transform = direction === 'next' ? 'translateX(100%)' : 'translateX(-100%)';
+                    nextMedia.style.opacity = '1';
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                case 'zoom':
+                    currentMedia.classList.add('zoom-out');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    showSlideContent(newIndex);
+                    break;
+                    
+                default:
+                    showSlideContent(newIndex);
+                    break;
+            }
+        }
+        
+        // Show slide content (without transition)
+        function showSlideContent(index) {
+            try {
+                currentIndex = index;
+                const mediaFile = mediaFiles[index];
+                
+                // Swap media elements for transitions
+                const temp = elements.currentMedia.src;
+                elements.currentMedia.src = elements.nextMedia.src;
+                elements.nextMedia.src = temp;
+                
+                // Reset styles
+                elements.currentMedia.classList.remove('fade-out', 'slide-left', 'slide-right', 'zoom-out');
+                elements.currentMedia.style.opacity = '1';
+                elements.currentMedia.style.transform = 'none';
+                elements.nextMedia.style.opacity = '0';
+                elements.nextMedia.style.transform = 'none';
+                
+                // Update caption
+                elements.currentCaption.textContent = mediaFile.caption;
+                
+                // Update audio
+                elements.currentAudio.src = mediaFile.audio;
+                elements.audioTitle.textContent = `Audio for Slide ${index + 1}`;
+                
+                // Play audio automatically if autoplay is enabled
+                if (isPlaying) {
+                    elements.currentAudio.currentTime = 0;
+                    elements.currentAudio.play().catch(e => console.log("Autoplay prevented:", e));
+                }
+                
+                // Update UI
+                updateSlideCounter();
+                updateButtonStates();
+                
+                // Reset progress bar
+                elements.progressBar.style.width = '0%';
+            } catch (error) {
+                console.error("Error showing slide content:", error);
+                showError(true, "Error displaying slide. Please check your files.");
+            }
+        }
+        
+        // Show a specific slide with transition
+        function showSlide(index, direction = 'next') {
+            if (index < 0 || index >= mediaFiles.length) return;
+            
+            pauseAutoPlay();
+            applyTransition(index, direction);
+            if (isPlaying) {
+                startAutoPlay();
+            }
+        }
+        
+        // Start auto-play using audio duration
+        function startAutoPlay() {
+            clearTimers();
+            
+            const duration = audioDurations[currentIndex] || 3000; // Fallback to 3 seconds
+            let secondsRemaining = Math.floor(duration / 1000);
+            
+            // Start countdown timer
+            updateCountdown(secondsRemaining);
+            
+            countdownId = setInterval(() => {
+                secondsRemaining--;
+                updateCountdown(secondsRemaining);
+                
+                if (secondsRemaining <= 0) {
+                    clearInterval(countdownId);
+                }
+            }, 1000);
+            
+            // Start slide transition timer
+            intervalId = setTimeout(() => {
+                if (currentIndex < mediaFiles.length - 1) {
+                    showSlide(currentIndex + 1, 'next');
+                } else {
+                    showSlide(0, 'next'); // Loop back to start
+                }
+            }, duration);
+            
+            // Animate progress bar
+            let progress = 0;
+            const increment = 100 / (duration / 100);
+            const progressInterval = setInterval(() => {
+                progress += increment;
+                elements.progressBar.style.width = Math.min(progress, 100) + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                }
+            }, 100);
+        }
+        
+        // Update countdown display
+        function updateCountdown(seconds) {
+            elements.countdown.textContent = Math.max(0, seconds);
+        }
+        
+        // Clear all timers
+        function clearTimers() {
+            if (intervalId) clearTimeout(intervalId);
+            if (countdownId) clearInterval(countdownId);
+            intervalId = null;
+            countdownId = null;
+            updateCountdown(0);
+        }
+        
+        // Pause auto-play
+        function pauseAutoPlay() {
+            clearTimers();
+            elements.currentAudio.pause();
+        }
+        
+        // Toggle play/pause state
+        function togglePlayPause() {
+            isPlaying = !isPlaying;
+            
+            if (isPlaying) {
+                startAutoPlay();
+                elements.playPauseBtn.textContent = 'Pause';
+            } else {
+                pauseAutoPlay();
+                elements.playPauseBtn.textContent = 'Play';
+            }
+        }
+        
+        // Update button states based on current index
+        function updateButtonStates() {
+            elements.prevBtn.disabled = currentIndex === 0;
+            elements.nextBtn.disabled = currentIndex === mediaFiles.length - 1;
+        }
+        
+        // Toggle fullscreen mode
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.error(`Error entering fullscreen: ${err.message}`);
+                });
+                elements.fullscreenBtn.textContent = 'Exit Fullscreen';
+            } else {
+                document.exitFullscreen();
+                elements.fullscreenBtn.textContent = 'Fullscreen';
+            }
+        }
+        
+        // Toggle media preloading
+        function togglePreloading() {
+            enablePreloading = !enablePreloading;
+            elements.preloadBtn.textContent = enablePreloading ? 'Disable Preloading' : 'Enable Preloading';
+            elements.preloadBtn.style.backgroundColor = enablePreloading ? '#0b7dda' : '#2196F3';
+            
+            if (enablePreloading) {
+                preloadMedia();
+            } else {
+                preloadedMedia = [];
+            }
+        }
+        
+        // Handle touch events for swipe navigation
+        function setupTouchEvents() {
+            let touchStartX = 0;
+            let touchEndX = 0;
+            const threshold = 50; // Minimum swipe distance in pixels
+            
+            document.addEventListener('touchstart', e => {
+                touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+            
+            document.addEventListener('touchend', e => {
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe();
+            }, { passive: true });
+            
+            function handleSwipe() {
+                if (touchEndX < touchStartX - threshold) {
+                    // Swipe left - next slide
+                    if (currentIndex < mediaFiles.length - 1) {
+                        showSlide(currentIndex + 1, 'next');
+                    }
+                } else if (touchEndX > touchStartX + threshold) {
+                    // Swipe right - previous slide
+                    if (currentIndex > 0) {
+                        showSlide(currentIndex - 1, 'prev');
+                    }
+                }
+            }
+        }
+        
+        // Handle keyboard shortcuts
+        function setupKeyboardEvents() {
+            document.addEventListener('keydown', (e) => {
+                // Ignore if focused on interactive element
+                if (document.activeElement.tagName === 'INPUT' || 
+                    document.activeElement.tagName === 'SELECT' || 
+                    document.activeElement.tagName === 'BUTTON') {
+                    return;
+                }
+                
+                switch(e.key) {
+                    case 'ArrowLeft':
+                        if (currentIndex > 0) {
+                            showSlide(currentIndex - 1, 'prev');
+                        }
+                        break;
+                    case 'ArrowRight':
+                    case ' ':
+                        if (currentIndex < mediaFiles.length - 1) {
+                            showSlide(currentIndex + 1, 'next');
+                        }
+                        break;
+                    case 'p':
+                        togglePlayPause();
+                        break;
+                    case 'f':
+                        toggleFullscreen();
+                        break;
+                }
+            });
+        }
+        
+        // Set up all event listeners
+        function setupEventListeners() {
+            // Button events
+            elements.prevBtn.addEventListener('click', () => {
+                if (currentIndex > 0) {
+                    showSlide(currentIndex - 1, 'prev');
+                }
+            });
+            
+            elements.nextBtn.addEventListener('click', () => {
+                if (currentIndex < mediaFiles.length - 1) {
+                    showSlide(currentIndex + 1, 'next');
+                }
+            });
+            
+            elements.playPauseBtn.addEventListener('click', togglePlayPause);
+            elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
+            elements.preloadBtn.addEventListener('click', togglePreloading);
+            
+            // Audio events
+            elements.currentAudio.addEventListener('play', () => {
+                if (!isPlaying) {
+                    isPlaying = true;
+                    elements.playPauseBtn.textContent = 'Pause';
+                    startAutoPlay();
+                }
+            });
+            
+            elements.currentAudio.addEventListener('pause', () => {
+                if (isPlaying) {
+                    isPlaying = false;
+                    elements.playPauseBtn.textContent = 'Play';
+                    pauseAutoPlay();
+                }
+            });
+            
+            // Volume control
+            elements.volumeSlider.addEventListener('input', (e) => {
+                elements.currentAudio.volume = e.target.value;
+            });
+            
+            // Transition type selector
+            elements.transitionType.addEventListener('change', (e) => {
+                currentTransition = e.target.value;
+            });
+            
+            // Fullscreen change handler
+            document.addEventListener('fullscreenchange', () => {
+                elements.fullscreenBtn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
+            });
+            
+            // Setup additional controls
+            setupTouchEvents();
+            setupKeyboardEvents();
+        }
+        
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
