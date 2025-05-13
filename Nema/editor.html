@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presentation Editor</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="editor.js" defer></script>
+</head>
+<body>
+    <h1>Presentation Editor</h1>
+    
+    <div class="slide-counter">
+        Slide <span id="currentSlideNumber">1</span> of <span id="totalSlides">1</span>
+    </div>
+    
+    <div class="editor-container">
+        <div class="preview-pane" id="previewPane">
+            <img id="previewImage" src="" alt="Preview">
+            <video id="previewVideo" controls style="display: none;"></video>
+            <div class="pointer" id="pointer" style="display: none;"></div>
+        </div>
+        
+        <div class="edit-pane">
+            <div class="file-inputs">
+                <div class="file-input-group">
+                    <label for="mediaFile">Media File:</label>
+                    <input type="file" id="mediaFile" accept="image/*, video/*">
+                </div>
+                
+                <div class="file-input-group">
+                    <label for="audioFile">Audio File:</label>
+                    <input type="file" id="audioFile" accept="audio/*">
+                </div>
+            </div>
+            
+            <div class="caption-group">
+                <label for="captionText">Caption:</label>
+                <textarea id="captionText" placeholder="Enter slide caption..."></textarea>
+            </div>
+            
+            <div class="point-controls">
+                <h3>Pointer Path</h3>
+                <div class="point-buttons">
+                    <button id="addPointBtn">Add Point</button>
+                    <button id="removePointBtn">Remove Last Point</button>
+                </div>
+                
+                <table id="pointsTable">
+                    <thead>
+                        <tr>
+                            <th>X Position</th>
+                            <th>Y Position</th>
+                            <th>Wait (ms)</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            
+            <div class="controls">
+                <button id="prevSlideBtn">Previous Slide</button>
+                <button id="nextSlideBtn">Next Slide</button>
+                <button id="saveBtn">Save Presentation</button>
+                <button id="loadBtn">Load Presentation</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
