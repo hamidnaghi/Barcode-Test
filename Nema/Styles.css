@@ -1,0 +1,271 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #f5f5f5;
+}
+
+h1 {
+    color: #2c3e50;
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.file-selector {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.file-selector label {
+    font-weight: 600;
+    color: #34495e;
+    margin-right: 10px;
+}
+
+.media-container {
+    position: relative;
+    width: 100%;
+    height: 500px;
+    background: #f9f9f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.media-content {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.pointer {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    background-color: #e74c3c;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    display: none;
+    transition: left 3s ease, top 3s ease;
+    border: 2px solid white;
+    box-shadow: 0 0 5px rgba(0,0,0,0.5);
+    will-change: left, top;
+}
+
+.caption {
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 1.2em;
+    padding: 15px;
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+audio {
+    width: 100%;
+    margin: 20px 0;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: 500;
+    transition: background-color 0.2s;
+    min-width: 100px;
+}
+
+button:hover {
+    background-color: #2980b9;
+}
+
+button:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+}
+
+#playPauseBtn.playing {
+    background-color: #2ecc71;
+}
+
+#playPauseBtn.playing:hover {
+    background-color: #27ae60;
+}
+
+.slide-counter {
+    text-align: center;
+    margin: 10px 0;
+    font-weight: 500;
+    color: #7f8c8d;
+}
+
+.error {
+    color: #e74c3c;
+    text-align: center;
+    margin: 20px 0;
+    padding: 15px;
+    background: #fde8e8;
+    border-radius: 4px;
+    display: none;
+}
+
+/* Editor specific styles */
+.editor-container {
+    display: flex;
+    gap: 30px;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.preview-pane {
+    flex: 1;
+    position: relative;
+    border: 2px dashed #ccc;
+    height: 500px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.edit-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.file-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.file-input-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.file-input-group label {
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #34495e;
+}
+
+.caption-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.caption-group label {
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #34495e;
+}
+
+textarea {
+    width: 100%;
+    height: 100px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    resize: vertical;
+}
+
+.point-controls {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+    border: 1px solid #eee;
+}
+
+.point-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+#removePointBtn {
+    background-color: #e74c3c;
+}
+
+#removePointBtn:hover {
+    background-color: #c0392b;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: left;
+}
+
+th {
+    background-color: #f2f2f2;
+    font-weight: 600;
+}
+
+tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+input[type="number"] {
+    width: 70px;
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+.editor-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    justify-content: center;
+}
+
+#saveBtn {
+    background-color: #2ecc71;
+}
+
+#saveBtn:hover {
+    background-color: #27ae60;
+}
+
+#loadBtn {
+    background-color: #f39c12;
+}
+
+#loadBtn:hover {
+    background-color: #d35400;
+}

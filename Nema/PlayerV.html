@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presentation Player</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="js/player.js" defer></script>
+</head>
+<body>
+    <h1>Presentation Player</h1>
+    
+    <div class="file-selector">
+        <label for="presentationFile">Select Presentation File:</label>
+        <input type="file" id="presentationFile" accept=".json">
+    </div>
+    
+    <div class="slide-counter">
+        Slide <span id="currentSlideNumber">0</span> of <span id="totalSlides">0</span>
+    </div>
+    
+    <div class="media-container">
+        <img id="currentImage" class="media-content" alt="Current image" style="display: none;">
+        <video id="currentVideo" class="media-content" controls style="display: none;"></video>
+        <div class="pointer" id="pointer"></div>
+    </div>
+    
+    <div id="currentCaption" class="caption">No presentation loaded</div>
+    
+    <audio id="currentAudio" controls></audio>
+    
+    <div class="controls">
+        <button id="prevBtn">Previous</button>
+        <button id="playPauseBtn">Play</button>
+        <button id="nextBtn">Next</button>
+    </div>
+    
+    <div id="errorMessage" class="error"></div>
+</body>
+</html>
