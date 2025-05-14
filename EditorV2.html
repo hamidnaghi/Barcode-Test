@@ -469,13 +469,9 @@
         function savePresentation() {
             const presentationData = {
                 slides: presentation.slides.map(slide => {
-                    // Convert blob URLs to file names for saving
-                    const media = slide.media.startsWith('blob:') ? 
-                        `media_${Date.now()}.${slide.mediaType === 'video' ? 'mp4' : 'jpg'}` : 
-                        slide.media;
                     return {
                         ...slide,
-                        media: media
+                        media: slide.media.startsWith('blob:') ? `media_${Date.now()}.${slide.mediaType === 'video' ? 'mp4' : 'jpg'}` : slide.media
                     };
                 }),
                 version: "1.0",
@@ -602,6 +598,8 @@
             // Add point button
             elements.addPointBtn.addEventListener('click', function() {
                 const slide = presentation.slides[presentation.currentSlideIndex];
+                if (slide.mediaType === 'video') return;
+                
                 if (!slide.pointerPath) slide.pointerPath = [];
                 slide.pointerPath.push({ x: 50, y: 50, wait: 3000 });
                 updatePointsTable();
@@ -614,6 +612,59 @@
                 if (slide.pointerPath && slide.pointerPath.length > 0) {
                     slide.pointerPath.pop();
                     updatePointsTable();
+                }
+            });
+
+            // Click to add point on image
+            elements.previewPane.addEventListener('click', function(e) {
+                const slide = presentation.slides[presentation.currentSlideIndex];
+                if (slide.mediaType === 'video') return;
+                
+                if (e.target === elements.previewImage) {
+                    const img = elements.previewImage;
+                    const container = elements.previewPane;
+                    const imgRect = img.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    
+                    // Calculate actual displayed image area
+                    const imgRatio = img.naturalWidth / img.naturalHeight;
+                    const containerRatio = containerRect.width / containerRect.height;
+                    
+                    let displayedWidth, displayedHeight, offsetX, offsetY;
+                    
+                    if (imgRatio > containerRatio) {
+                        displayedWidth = containerRect.width;
+                        displayedHeight = containerRect.width / imgRatio;
+                        offsetX = 0;
+                        offsetY = (containerRect.height - displayedHeight) / 2;
+                    } else {
+                        displayedHeight = containerRect.height;
+                        displayedWidth = containerRect.height * imgRatio;
+                        offsetX = (containerRect.width - displayedWidth) / 2;
+                        offsetY = 0;
+                    }
+                    
+                    // Calculate click position relative to container
+                    const clickX = e.clientX - containerRect.left;
+                    const clickY = e.clientY - containerRect.top;
+                    
+                    // Only register clicks on the actual image
+                    if (clickX >= offsetX && clickX <= offsetX + displayedWidth &&
+                        clickY >= offsetY && clickY <= offsetY + displayedHeight) {
+                        
+                        // Convert to percentage coordinates (0-100%)
+                        const x = ((clickX - offsetX) / displayedWidth) * 100;
+                        const y = ((clickY - offsetY) / displayedHeight) * 100;
+                        
+                        if (!slide.pointerPath) slide.pointerPath = [];
+                        slide.pointerPath.push({ 
+                            x: Math.round(x * 100) / 100,
+                            y: Math.round(y * 100) / 100,
+                            wait: 3000 
+                        });
+                        updatePointsTable();
+                        previewPoint(slide.pointerPath[slide.pointerPath.length - 1]);
+                    }
                 }
             });
 
