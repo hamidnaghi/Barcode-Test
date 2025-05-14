@@ -57,7 +57,7 @@
             transform: translate(-50%, -50%);
             z-index: 10;
             display: none;
-            transition: left 0.5s ease, top 0.5s ease;
+            transition: left 3s ease, top 3s ease; /* Changed to 3s for smoother movement */
             border: 2px solid white;
             box-shadow: 0 0 5px rgba(0,0,0,0.5);
             will-change: left, top;
@@ -221,6 +221,10 @@
             // Clear any existing timers
             clearTimers();
             
+            // Pause any currently playing media
+            elements.currentVideo.pause();
+            elements.currentAudio.pause();
+            
             const slide = presentation.slides[presentation.currentIndex];
             
             if (!slide) {
@@ -318,7 +322,6 @@
             }
         }
 
-        // [Rest of your functions remain exactly the same...]
         function animatePointer(path) {
             if (!path || path.length === 0) return;
             
@@ -397,7 +400,7 @@
             elements.pointer.style.left = `${xPos}px`;
             elements.pointer.style.top = `${yPos}px`;
             void elements.pointer.offsetWidth; // Force reflow
-            elements.pointer.style.transition = 'left 0.5s ease, top 0.5s ease';
+            elements.pointer.style.transition = 'left 3s ease, top 3s ease'; // Changed to 3s for smoother movement
             
             // Start moving
             presentation.timers.push(setTimeout(moveToNextPoint, firstPoint.wait));
