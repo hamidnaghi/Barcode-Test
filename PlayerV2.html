@@ -191,9 +191,15 @@
                     
                     // Handle both old format (array) and new format (object)
                     if (Array.isArray(loadedData)) {
-                        presentation.slides = loadedData;
+                        presentation.slides = loadedData.map(slide => ({
+                            ...slide,
+                            mediaType: slide.mediaType || 'image' // Default to image for backward compatibility
+                        }));
                     } else if (loadedData.slides) {
-                        presentation.slides = loadedData.slides;
+                        presentation.slides = loadedData.slides.map(slide => ({
+                            ...slide,
+                            mediaType: slide.mediaType || 'image'
+                        }));
                     } else {
                         throw new Error("Invalid presentation format");
                     }
@@ -232,10 +238,13 @@
                 elements.currentVideo.src = slide.media;
                 elements.currentVideo.style.display = 'block';
                 elements.currentAudio.src = '';
+                // Ensure video plays when auto-advancing
+                elements.currentVideo.removeAttribute('controls');
             } else {
                 elements.currentImage.src = slide.media;
                 elements.currentImage.style.display = 'block';
                 elements.currentAudio.src = slide.audio || '';
+                elements.currentVideo.removeAttribute('controls');
             }
             
             // Load caption
@@ -248,13 +257,14 @@
             if (presentation.isPlaying) {
                 if (slide.mediaType === 'video') {
                     elements.currentVideo.onloadeddata = function() {
-                        startSequence();
+                        this.play().then(() => {
+                            startSequence();
+                        }).catch(e => {
+                            showError("Video playback failed. Please click play.");
+                            presentation.isPlaying = false;
+                            updateUI();
+                        });
                     };
-                    elements.currentVideo.play().catch(e => {
-                        showError("Video playback failed. Please click play.");
-                        presentation.isPlaying = false;
-                        updateUI();
-                    });
                 } else {
                     elements.currentImage.onload = function() {
                         startSequence();
@@ -268,48 +278,47 @@
             
             if (slide.mediaType === 'video') {
                 // For videos, just play the video
-                const videoPromise = elements.currentVideo.play().catch(e => {
-                    showError("Video playback failed. Please click play.");
-                    console.error("Video playback error:", e);
-                    presentation.isPlaying = false;
-                    updateUI();
-                    return Promise.reject(e);
-                });
-                
-                // Set timer for next slide based on video duration
-                videoPromise.then(() => {
-                    const videoDuration = elements.currentVideo.duration * 1000;
-                    presentation.timers.push(setTimeout(() => {
-                        nextSlide();
-                    }, videoDuration));
-                });
+                elements.currentVideo.play()
+                    .then(() => {
+                        const videoDuration = elements.currentVideo.duration * 1000;
+                        presentation.timers.push(setTimeout(() => {
+                            nextSlide();
+                        }, videoDuration));
+                    })
+                    .catch(e => {
+                        showError("Video playback failed. Please click play.");
+                        console.error("Video playback error:", e);
+                        presentation.isPlaying = false;
+                        updateUI();
+                    });
             } else {
                 // For images, play audio and animate pointer
-                const audioPromise = elements.currentAudio.play().catch(e => {
-                    showError("Audio playback failed. Please click play.");
-                    console.error("Audio playback error:", e);
-                    presentation.isPlaying = false;
-                    updateUI();
-                    return Promise.reject(e);
-                });
-                
-                // Start pointer animation
-                animatePointer(slide.pointerPath || []);
-                
-                audioPromise.then(() => {
-                    const audioDuration = elements.currentAudio.duration * 1000;
-                    presentation.timers.push(setTimeout(() => {
-                        nextSlide();
-                    }, audioDuration));
-                }).catch(() => {
-                    const pointerDuration = (slide.pointerPath || []).reduce((sum, point) => sum + point.wait + 3000, 0) || 5000;
-                    presentation.timers.push(setTimeout(() => {
-                        nextSlide();
-                    }, pointerDuration));
-                });
+                elements.currentAudio.play()
+                    .then(() => {
+                        // Start pointer animation
+                        animatePointer(slide.pointerPath || []);
+                        
+                        const audioDuration = elements.currentAudio.duration * 1000;
+                        presentation.timers.push(setTimeout(() => {
+                            nextSlide();
+                        }, audioDuration));
+                    })
+                    .catch(e => {
+                        showError("Audio playback failed. Please click play.");
+                        console.error("Audio playback error:", e);
+                        presentation.isPlaying = false;
+                        updateUI();
+                        
+                        // Fallback to pointer path timing if audio fails
+                        const pointerDuration = (slide.pointerPath || []).reduce((sum, point) => sum + point.wait + 3000, 0) || 5000;
+                        presentation.timers.push(setTimeout(() => {
+                            nextSlide();
+                        }, pointerDuration));
+                    });
             }
         }
 
+        // [Rest of your functions remain exactly the same...]
         function animatePointer(path) {
             if (!path || path.length === 0) return;
             
