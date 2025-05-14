@@ -288,8 +288,7 @@
                 mediaType: 'image',
                 audio: '',
                 caption: '',
-                pointerPath: [],
-                originalFilename: '' // Added to store original filename
+                pointerPath: []
             });
             presentation.currentSlideIndex = presentation.slides.length - 1;
             updateUI();
@@ -471,11 +470,8 @@
             const presentationData = {
                 slides: presentation.slides.map(slide => {
                     return {
-                        media: slide.originalFilename || (slide.media.startsWith('blob:') ? `media_${Date.now()}.${slide.mediaType === 'video' ? 'mp4' : 'jpg'}` : slide.media,
-                        mediaType: slide.mediaType,
-                        audio: slide.audio,
-                        caption: slide.caption,
-                        pointerPath: slide.pointerPath
+                        ...slide,
+                        media: slide.media.startsWith('blob:') ? `media_${Date.now()}.${slide.mediaType === 'video' ? 'mp4' : 'jpg'}` : slide.media
                     };
                 }),
                 version: "1.0",
@@ -510,24 +506,16 @@
                         const content = readerEvent.target.result;
                         const loadedData = JSON.parse(content);
                         
-                        presentation.slides = [];
-                        
                         if (Array.isArray(loadedData)) {
-                            loadedData.forEach(slide => {
-                                presentation.slides.push({
-                                    ...slide,
-                                    mediaType: slide.mediaType || 'image',
-                                    originalFilename: slide.media // Store original filename
-                                });
-                            });
+                            presentation.slides = loadedData.map(slide => ({
+                                ...slide,
+                                mediaType: slide.mediaType || 'image'
+                            }));
                         } else if (loadedData.slides) {
-                            loadedData.slides.forEach(slide => {
-                                presentation.slides.push({
-                                    ...slide,
-                                    mediaType: slide.mediaType || 'image',
-                                    originalFilename: slide.media // Store original filename
-                                });
-                            });
+                            presentation.slides = loadedData.slides.map(slide => ({
+                                ...slide,
+                                mediaType: slide.mediaType || 'image'
+                            }));
                         } else {
                             throw new Error("Invalid presentation format");
                         }
@@ -577,7 +565,6 @@
                     const slide = presentation.slides[presentation.currentSlideIndex];
                     slide.mediaType = isVideo ? 'video' : 'image';
                     slide.media = URL.createObjectURL(file);
-                    slide.originalFilename = file.name; // Store original filename
                     
                     if (isVideo) {
                         elements.previewImage.style.display = 'none';
