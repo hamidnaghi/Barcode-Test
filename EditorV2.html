@@ -275,11 +275,11 @@
                 const slide = {
                     id: slideId,
                     media: '',
-                    originalFilename: '', // Store original filename
                     mediaType: '',
                     caption: '',
                     audio: '',
-                    pointerPath: []
+                    pointerPath: [],
+                    originalFilename: '' // Add this line to store original filename
                 };
                 
                 presentation.slides.push(slide);
@@ -352,7 +352,7 @@
                 const slide = presentation.slides[slideIndex];
                 const slideElement = document.querySelector(`.slide[data-id="${slideId}"]`);
                 
-                // Media upload - MODIFIED TO STORE ORIGINAL FILENAME
+                // Media upload
                 const mediaInput = slideElement.querySelector(`#media-upload-${slideId}`);
                 mediaInput.addEventListener('change', (e) => {
                     const file = e.target.files[0];
@@ -459,11 +459,11 @@
                 emptyState.classList.toggle('hidden', presentation.slides.length > 0);
             }
 
-            // Export presentation - MODIFIED TO USE ORIGINAL FILENAME
+            // Export presentation - MODIFIED TO USE ORIGINAL FILENAMES
             exportBtn.addEventListener('click', () => {
                 const exportData = {
                     slides: presentation.slides.map(slide => ({
-                        media: slide.originalFilename, // Use original filename instead of blob URL
+                        media: slide.originalFilename, // Use original filename here
                         mediaType: slide.mediaType,
                         audio: slide.audio,
                         caption: slide.caption,
@@ -472,7 +472,6 @@
                     version: "1.0",
                     created: new Date().toISOString()
                 };
-                
                 exportPreview.value = JSON.stringify(exportData, null, 2);
                 exportModal.classList.remove('hidden');
             });
@@ -482,12 +481,12 @@
                 exportModal.classList.add('hidden');
             });
 
-            // Download export
+            // Download export - MODIFIED TO USE ORIGINAL FILENAMES
             downloadExportBtn.addEventListener('click', () => {
                 const filename = exportFilename.value || 'presentation.json';
                 const exportData = {
                     slides: presentation.slides.map(slide => ({
-                        media: slide.originalFilename, // Use original filename instead of blob URL
+                        media: slide.originalFilename, // Use original filename here
                         mediaType: slide.mediaType,
                         audio: slide.audio,
                         caption: slide.caption,
@@ -496,7 +495,6 @@
                     version: "1.0",
                     created: new Date().toISOString()
                 };
-                
                 const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 
