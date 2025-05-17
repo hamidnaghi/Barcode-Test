@@ -60,7 +60,7 @@
   </style>
 </head>
 <body>
-  <h1>Symbol Matcher Ver5</h1>
+  <h1>Symbol Matcher Ver6</h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
@@ -274,259 +274,178 @@
 
 
 function matchSymbols() {
-  // Validate initial conditions
-  if (!cvReady) {
-    updateStatus("OpenCV not ready yet", true);
+  // Basic validation
+  if (!window.cv) {
+    updateStatus("OpenCV.js not loaded", true);
     return;
   }
 
   const canvas = document.getElementById('inputCanvas');
   if (!canvas || canvas.width === 0) {
-    updateStatus("Please load a valid image first", true);
+    updateStatus("Please load an image first", true);
     return;
   }
 
-  // UI State Management
-  updateStatus("Starting symbol matching...");
+  // UI Setup
+  updateStatus("Starting matching process...");
   document.getElementById('processBtn').disabled = true;
   document.getElementById('results').innerHTML = `
     <div class="processing">
       <div class="spinner"></div>
-      <p>Analyzing image...</p>
-      <p class="status-text">Initializing</p>
+      <p>Processing image...</p>
+      <div id="processingDetails"></div>
     </div>
   `;
 
-  // Processing timeout to prevent hanging
-  const processingTimeout = setTimeout(() => {
-    document.getElementById('results').innerHTML += `
-      <p class="warning">Processing is taking longer than expected...</p>
-    `;
-  }, 5000);
-
-  // Main processing block
-  setTimeout(() => {
-    // Declare all OpenCV objects at the start for proper cleanup
-    let src, gray, blurred, equalized, processed;
-    let orb, inputKeypoints, inputDescriptors, bf;
-    let featureCount = 0;
-
+  // Main processing
+  setTimeout(async () => {
     try {
-      // --- STAGE 1: IMAGE PREPROCESSING ---
-      updateProcessingStatus("Loading image...");
-      src = cv.imread('inputCanvas');
-      if (src.empty()) throw new Error("Failed to load image");
-
-      // Convert to grayscale
-      gray = new cv.Mat();
+      // 1. Load and prepare image (simpler approach)
+      const src = cv.imread('inputCanvas');
+      if (src.empty()) throw new Error("Failed to read image");
+      
+      const gray = new cv.Mat();
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      updateProcessingStatus("Preprocessing image...");
-
-      // Noise reduction
-      blurred = new cv.Mat();
-      cv.GaussianBlur(gray, blurred, new cv.Size(3, 3), 0);
-
-      // Contrast enhancement
-      equalized = new cv.Mat();
-      cv.equalizeHist(blurred, equalized);
-
-      // Thresholding
-      processed = new cv.Mat();
-      cv.adaptiveThreshold(
-        equalized,
-        processed,
-        255,
-        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv.THRESH_BINARY_INV,
-        11,
-        2
-      );
-
-      // --- STAGE 2: FEATURE DETECTION ---
-      updateProcessingStatus("Detecting features...");
-      orb = new cv.ORB({
-        nFeatures: MAX_FEATURES,
-        scaleFactor: 1.2,
-        edgeThreshold: 15,
-        patchSize: 31
-      });
       
-      inputKeypoints = new cv.KeyPointVector();
-      inputDescriptors = new cv.Mat();
-      orb.detectAndCompute(processed, new cv.Mat(), inputKeypoints, inputDescriptors);
+      // Simple threshold instead of adaptive for reliability
+      const processed = new cv.Mat();
+      cv.threshold(gray, processed, 128, 255, cv.THRESH_BINARY_INV);
+      
+      updateProcessingDetails("Image preprocessed");
 
-      featureCount = inputKeypoints.size();
-      updateProcessingStatus(`Found ${featureCount} features`);
-
-      if (featureCount < 10) {
-        throw new Error(`Insufficient features (${featureCount}) - image may be too blurry or low contrast`);
+      // 2. Feature detection with simpler settings
+      const orb = new cv.ORB(300); // Reduced feature count for stability
+      const keypoints = new cv.KeyPointVector();
+      const descriptors = new cv.Mat();
+      orb.detectAndCompute(processed, new cv.Mat(), keypoints, descriptors);
+      
+      const featureCount = keypoints.size();
+      updateProcessingDetails(`Found ${featureCount} features`);
+      
+      if (featureCount < 5) {
+        throw new Error("Not enough features detected");
       }
 
-      // --- STAGE 3: FEATURE MATCHING ---
-      updateProcessingStatus("Matching symbols...");
+      // 3. Basic matching (without geometric verification)
       const matches = [];
-      bf = new cv.BFMatcher(cv.NORM_HAMMING, true);
-
+      const bf = new cv.BFMatcher(cv.NORM_HAMMING, true);
+      
       for (let i = 0; i < NUM_SYMBOLS; i++) {
-        if (!referenceDescriptors[i] || referenceDescriptors[i].empty()) {
-          continue;
-        }
-
+        if (!referenceDescriptors[i]) continue;
+        
         try {
-          updateProcessingStatus(`Checking symbol ${i}...`);
+          const matchResults = new cv.DMatchVector();
+          bf.match(descriptors, referenceDescriptors[i], matchResults);
           
-          // First pass: Basic matching
-          const knnMatches = new cv.DMatchVectorVector();
-          bf.knnMatch(inputDescriptors, referenceDescriptors[i], knnMatches, 2);
-
-          // Ratio test with dynamic threshold
+          // Simple distance-based filtering
           const goodMatches = [];
-          for (let j = 0; j < knnMatches.size(); j++) {
-            const pair = knnMatches.get(j);
-            if (pair.size() >= 2) {
-              const m1 = pair.get(0);
-              const m2 = pair.get(1);
-              if (m1.distance < 0.75 * m2.distance) {
-                goodMatches.push(m1);
-              }
+          for (let j = 0; j < matchResults.size(); j++) {
+            const m = matchResults.get(j);
+            if (m.distance < 50) { // Simple distance threshold
+              goodMatches.push(m);
             }
           }
-
-          // Second pass: Geometric verification
+          
           if (goodMatches.length >= 5) {
-            const srcPoints = new cv.Mat();
-            const dstPoints = new cv.Mat();
-
-            for (const m of goodMatches) {
-              const kp1 = inputKeypoints.get(m.queryIdx);
-              const kp2 = referenceKeypoints[i].get(m.trainIdx);
-              srcPoints.push_back([kp1.pt.x, kp1.pt.y]);
-              dstPoints.push_back([kp2.pt.x, kp2.pt.y]);
-            }
-
-            const homography = cv.findHomography(srcPoints, dstPoints, cv.RANSAC, 5);
-            if (homography && !homography.empty()) {
-              const mask = homography.getInliers();
-              let inliers = 0;
-              for (let k = 0; k < mask.rows; k++) {
-                if (mask.data[k] === 1) inliers++;
-              }
-
-              if (inliers >= 5) {
-                const confidence = Math.min(100, Math.round((inliers / goodMatches.length) * 100));
-                matches.push({
-                  symbolId: i,
-                  confidence: confidence,
-                  matches: goodMatches,
-                  inliers: inliers
-                });
-              }
-            }
-
-            srcPoints.delete();
-            dstPoints.delete();
-            if (homography) homography.delete();
+            matches.push({
+              symbolId: i,
+              confidence: Math.min(100, goodMatches.length * 2),
+              matches: goodMatches
+            });
           }
-
-          knnMatches.delete();
-        } catch (symbolErr) {
-          console.warn(`Error processing symbol ${i}:`, symbolErr);
+          
+          matchResults.delete();
+        } catch (e) {
+          console.warn(`Error matching symbol ${i}:`, e);
         }
       }
 
-      // --- STAGE 4: RESULTS HANDLING ---
-      clearTimeout(processingTimeout);
-      
+      // 4. Show results
       if (matches.length > 0) {
         matches.sort((a, b) => b.confidence - a.confidence);
-        showResults(matches);
-        drawMatches(src, matches);
-        updateStatus(`Success! Found ${matches.length} matches`);
+        showSimpleResults(matches);
+        updateStatus(`Found ${matches.length} matches`);
       } else {
-        showNoMatchesFound(featureCount);
+        showNoMatchesSimple(featureCount);
       }
-
-    } catch (mainErr) {
-      clearTimeout(processingTimeout);
-      handleProcessingError(mainErr, featureCount);
-    } finally {
-      // Cleanup all OpenCV objects
-      [src, gray, blurred, equalized, processed, 
-       orb, inputKeypoints, inputDescriptors, bf]
-        .forEach(item => item && !item.isDeleted && item.delete());
       
+    } catch (err) {
+      handleMainError(err);
+    } finally {
       document.getElementById('processBtn').disabled = false;
     }
   }, 100);
 
   // Helper functions
-  function updateProcessingStatus(message) {
-    const statusElement = document.querySelector('.processing .status-text');
-    if (statusElement) {
-      statusElement.textContent = message;
+  function updateProcessingDetails(message) {
+    const detailsEl = document.getElementById('processingDetails');
+    if (detailsEl) {
+      const entry = document.createElement('p');
+      entry.textContent = `✓ ${message}`;
+      detailsEl.appendChild(entry);
     }
-    console.log(`Status: ${message}`);
+    console.log(message);
   }
 
-  function showNoMatchesFound(featureCount) {
-    let diagnosis = "";
-    if (featureCount < 15) {
-      diagnosis = "The image contains very few features (sharp edges/corners). This usually means:";
-    } else if (featureCount > 800) {
-      diagnosis = "The image contains many features, which might indicate too much noise or complex patterns.";
-    } else {
-      diagnosis = "The features detected didn't match any reference symbols. Possible reasons:";
-    }
+  function showSimpleResults(matches) {
+    let html = '<h3>Possible Matches:</h3>';
+    matches.slice(0, 3).forEach(match => {
+      const symbolId = match.symbolId;
+      const svg = document.getElementById(`symbol${symbolId}`).cloneNode(true);
+      svg.style.width = '50px';
+      svg.style.height = '50px';
+      
+      html += `
+        <div class="match">
+          ${svg.outerHTML}
+          <div>
+            <strong>Symbol ID:</strong> ${symbolId}<br>
+            <strong>Confidence:</strong> ${match.confidence}%
+          </div>
+        </div>
+      `;
+    });
+    
+    document.getElementById('results').innerHTML = html;
+  }
 
+  function showNoMatchesSimple(featureCount) {
     document.getElementById('results').innerHTML = `
       <div class="no-matches">
-        <h3>No Symbols Matched</h3>
-        <p><strong>Diagnosis:</strong> ${diagnosis}</p>
-        <div class="suggestions">
-          <ul>
-            <li>${featureCount < 15 ? '🔴 ' : ''}Image is blurry or low contrast</li>
-            <li>${featureCount > 800 ? '🔴 ' : ''}Too much background noise</li>
-            <li>Symbols are too small or distorted</li>
-            <li>Symbols don't match reference shapes</li>
-            <li>Poor lighting conditions</li>
-          </ul>
-          <div class="debug-info">
-            <p><strong>Technical details:</strong></p>
-            <p>Features detected: ${featureCount}</p>
-            <p>Reference symbols: ${NUM_SYMBOLS}</p>
-          </div>
-          <button onclick="document.getElementById('fileInput').click()">Try Another Image</button>
+        <h3>No Matches Found</h3>
+        <p>Detected ${featureCount} features but found no matches.</p>
+        <div class="tips">
+          <p><strong>Tips:</strong></p>
+          <ol>
+            <li>Use clear, high-contrast images</li>
+            <li>Ensure symbols match the reference shapes</li>
+            <li>Try cropping to just the symbol</li>
+            <li>Use proper lighting</li>
+          </ol>
         </div>
       </div>
     `;
-    updateStatus("No matches found - see suggestions", true);
+    updateStatus("No matches found", true);
   }
 
-  function handleProcessingError(error, featureCount) {
-    console.error("Processing error:", error);
+  function handleMainError(err) {
+    console.error("Processing error:", err);
     
-    let errorDetails = error.message || "Unknown error occurred";
-    if (error.message.includes("malloc")) {
-      errorDetails = "Memory allocation error - try a smaller image";
-    } else if (error.message.includes("pointer")) {
-      errorDetails = "Internal processing error - please refresh and try again";
-    }
-
     document.getElementById('results').innerHTML = `
       <div class="error">
         <h3>Processing Error</h3>
-        <p>${errorDetails}</p>
-        ${featureCount ? `<p>Features detected before error: ${featureCount}</p>` : ''}
-        <div class="actions">
-          <button onclick="location.reload()">Reload Application</button>
-          <button onclick="document.getElementById('fileInput').click()">Try Different Image</button>
+        <p>${err.message || "Unknown error occurred"}</p>
+        <div class="debug">
+          <p><strong>Debug info:</strong></p>
+          <p>OpenCV ready: ${window.cv ? 'Yes' : 'No'}</p>
+          <p>Error type: ${err.name || 'N/A'}</p>
         </div>
+        <button onclick="location.reload()">Reload Page</button>
       </div>
     `;
-    updateStatus("Error during processing", true);
+    updateStatus("Processing failed", true);
   }
 }
-
 
 
 
