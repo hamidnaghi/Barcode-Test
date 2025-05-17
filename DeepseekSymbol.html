@@ -140,7 +140,7 @@
   </style>
 </head>
 <body>
-  <h1>Advanced Symbol Matcher V15</h1>
+  <h1>Advanced Symbol Matcher V16</h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
@@ -522,27 +522,28 @@
       }
     }
 
-    function testWithSampleImage() {
-      const canvas = document.getElementById('inputCanvas');
-      const ctx = canvas.getContext('2d');
-      
-      // Create a test image (Symbol 0 - hexagon)
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'black';
-      ctx.beginPath();
-      ctx.moveTo(70, 20);
-      ctx.lineTo(120, 20);
-      ctx.lineTo(150, 60);
-      ctx.lineTo(120, 100);
-      ctx.lineTo(70, 100);
-      ctx.lineTo(40, 60);
-      ctx.closePath();
-      ctx.fill();
-      
-      updateStatus("Test image loaded. Click 'Match Symbols'");
-      document.getElementById('results').innerHTML = "Ready to match test image...";
-    }
+  function testWithSampleImage() {
+  const canvas = document.getElementById('inputCanvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Set canvas dimensions (if not already set)
+  canvas.width = 200;
+  canvas.height = 200;
+  
+  // Create a test image (black square on white background)
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'black';
+  
+  // Draw a black square (100x100 pixels centered)
+  const squareSize = 100;
+  const x = (canvas.width - squareSize) / 2;
+  const y = (canvas.height - squareSize) / 2;
+  ctx.fillRect(x, y, squareSize, squareSize);
+  
+  updateStatus("Black square test image loaded. Click 'Match Symbols'");
+  document.getElementById('results').innerHTML = "Ready to match black square test image...";
+}
 
     function updateStatus(message, isError = false) {
       const statusDiv = document.getElementById('status');
