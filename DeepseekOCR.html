@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Symbol Matcher - Complete Working Version</title>
+  <title>Symbol Matcher - Robust Version</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -109,18 +109,38 @@
       background: #ffebee;
       border-radius: 5px;
     }
+    .controls {
+      margin: 15px 0;
+    }
+    .slider-container {
+      margin: 10px 0;
+    }
+    .slider-container label {
+      display: inline-block;
+      width: 200px;
+    }
   </style>
 </head>
 <body>
-  <h1>Symbol Matcher Ver3 </h1>
+  <h1>Robust Symbol Matcher Ver4</h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
   <div id="referenceSymbols"></div>
   
   <input type="file" id="fileInput" accept="image/*" disabled>
-  <button id="processBtn" disabled>Match Symbols</button>
-  <button id="testBtn" disabled>Test with Black Square</button>
+  
+  <div class="controls">
+    <button id="processBtn" disabled>Match Symbols</button>
+    <button id="testBtn" disabled>Test with Black Square</button>
+    <button id="rotateBtn" disabled>Rotate Image</button>
+  </div>
+  
+  <div class="slider-container">
+    <label for="thresholdSlider">Match Threshold (lower for distorted images):</label>
+    <input type="range" id="thresholdSlider" min="50" max="100" value="85">
+    <span id="thresholdValue">85%</span>
+  </div>
   
   <div>
     <canvas id="inputCanvas"></canvas>
@@ -205,11 +225,13 @@
   <script>
     // Configuration
     const NUM_SYMBOLS = 16;
-    const MATCH_THRESHOLD = 0.85; // Similarity threshold (0-1)
+    let MATCH_THRESHOLD = 0.85; // Similarity threshold (0-1)
+    let currentRotation = 0;
     
     // State
     let referenceTemplates = [];
     let cvReady = false;
+    let originalImageData = null;
     
     // Load OpenCV.js
     const script = document.createElement('script');
@@ -254,6 +276,13 @@
       document.getElementById('fileInput').disabled = false;
       document.getElementById('processBtn').disabled = false;
       document.getElementById('testBtn').disabled = false;
+      document.getElementById('rotateBtn').disabled = false;
+      
+      // Setup threshold slider
+      document.getElementById('thresholdSlider').addEventListener('input', function() {
+        MATCH_THRESHOLD = this.value / 100;
+        document.getElementById('thresholdValue').textContent = `${this.value}%`;
+      });
     }
 
     function createTemplate(svg, index) {
@@ -277,10 +306,16 @@
         const src = cv.imread(canvas);
         const gray = new cv.Mat();
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        referenceTemplates[index] = gray;
+        
+        // Apply some blur to make matching more robust
+        const blurred = new cv.Mat();
+        cv.GaussianBlur(gray, blurred, new cv.Size(3, 3), 0);
+        
+        referenceTemplates[index] = blurred;
         
         // Cleanup
         src.delete();
+        gray.delete();
       };
       
       img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
@@ -313,9 +348,19 @@
           const gray = new cv.Mat();
           cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
           
+          // Apply preprocessing to make matching more robust
+          const processed = new cv.Mat();
+          cv.GaussianBlur(gray, processed, new cv.Size(3, 3), 0);
+          
+          // Adaptive thresholding to handle varying lighting
+          const thresholded = new cv.Mat();
+          cv.adaptiveThreshold(processed, thresholded, 255, 
+                             cv.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                             cv.THRESH_BINARY, 11, 2);
+          
           // Resize to match template size
           const resized = new cv.Mat();
-          cv.resize(gray, resized, new cv.Size(100, 100));
+          cv.resize(thresholded, resized, new cv.Size(100, 100));
           
           // Show processed image
           cv.imshow('debugCanvas', resized);
@@ -330,11 +375,11 @@
             cv.absdiff(resized, referenceTemplates[i], diff);
             
             // Convert to binary (black/white)
-            const thresholded = new cv.Mat();
-            cv.threshold(diff, thresholded, 30, 255, cv.THRESH_BINARY);
+            const diffThresholded = new cv.Mat();
+            cv.threshold(diff, diffThresholded, 30, 255, cv.THRESH_BINARY);
             
             // Count different pixels
-            const differentPixels = cv.countNonZero(thresholded);
+            const differentPixels = cv.countNonZero(diffThresholded);
             const similarity = 1 - (differentPixels / (100 * 100));
             
             if (similarity >= MATCH_THRESHOLD) {
@@ -346,7 +391,7 @@
             }
             
             diff.delete();
-            thresholded.delete();
+            diffThresholded.delete();
           }
           
           // Display results
@@ -355,6 +400,8 @@
           // Cleanup
           src.delete();
           gray.delete();
+          processed.delete();
+          thresholded.delete();
           resized.delete();
         } catch (err) {
           console.error("Matching error:", err);
@@ -401,9 +448,10 @@
             <p>No symbols matched with sufficient confidence.</p>
             <p>Try:</p>
             <ul>
+              <li>Lowering the match threshold</li>
+              <li>Rotating the image (use the Rotate button)</li>
               <li>Clearer images with better contrast</li>
               <li>Larger symbols in the image</li>
-              <li>Adjusting the camera angle</li>
             </ul>
           </div>
         `;
@@ -421,12 +469,62 @@
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Draw black square (should match symbol 8)
+      // Draw black square (should match symbol 7 or 8)
       ctx.fillStyle = 'black';
       ctx.fillRect(50, 50, 100, 100);
       
+      // Save original image data for rotation
+      originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      currentRotation = 0;
+      
       updateStatus("Black square test image loaded");
       document.getElementById('results').innerHTML = "Click 'Match Symbols' to test";
+    }
+
+    function rotateImage() {
+      const canvas = document.getElementById('inputCanvas');
+      if (!canvas || canvas.width === 0) {
+        updateStatus("Please load an image first", true);
+        return;
+      }
+      
+      const ctx = canvas.getContext('2d');
+      
+      // If we don't have the original image data, get it now
+      if (!originalImageData) {
+        originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        currentRotation = 0;
+      }
+      
+      // Rotate 90 degrees
+      currentRotation = (currentRotation + 90) % 360;
+      
+      // Create temporary canvas for rotation
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      
+      // Swap width/height if rotating 90 or 270 degrees
+      if (currentRotation % 180 === 90) {
+        tempCanvas.width = canvas.height;
+        tempCanvas.height = canvas.width;
+      } else {
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+      }
+      
+      // Clear and rotate
+      tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+      tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
+      tempCtx.rotate(currentRotation * Math.PI / 180);
+      tempCtx.translate(-canvas.width / 2, -canvas.height / 2);
+      tempCtx.putImageData(originalImageData, 0, 0);
+      
+      // Copy back to main canvas
+      canvas.width = tempCanvas.width;
+      canvas.height = tempCanvas.height;
+      ctx.drawImage(tempCanvas, 0, 0);
+      
+      updateStatus(`Image rotated ${currentRotation} degrees`);
     }
 
     function updateStatus(message, isError = false) {
@@ -463,6 +561,11 @@
           canvas.width = width;
           canvas.height = height;
           ctx.drawImage(img, 0, 0, width, height);
+          
+          // Save original image data for rotation
+          originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          currentRotation = 0;
+          
           updateStatus("Image loaded. Click 'Match Symbols'");
         };
         img.onerror = () => updateStatus("Failed to load image", true);
@@ -474,6 +577,7 @@
 
     document.getElementById('processBtn').addEventListener('click', matchSymbols);
     document.getElementById('testBtn').addEventListener('click', testWithBlackSquare);
+    document.getElementById('rotateBtn').addEventListener('click', rotateImage);
   </script>
 </body>
 </html>
