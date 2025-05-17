@@ -2,83 +2,109 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Symbol Matcher (Fixed Version)</title>
+  <title>Complete Symbol Matcher</title>
   <style>
     body {
-      font-family: sans-serif;
-      max-width: 800px;
+      font-family: Arial, sans-serif;
+      max-width: 900px;
       margin: 0 auto;
       padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #2c3e50;
+      text-align: center;
     }
     #referenceSymbols {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-      margin-bottom: 20px;
+      gap: 15px;
+      margin: 20px 0;
     }
     .symbol {
-      text-align: center;
-      padding: 10px;
+      background: #f9f9f9;
       border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 15px;
+      text-align: center;
     }
     canvas {
       max-width: 100%;
-      border: 1px solid #ccc;
+      border: 1px solid #ddd;
       margin: 10px 0;
+      display: block;
     }
     #status {
-      padding: 10px;
-      margin: 10px 0;
+      padding: 12px;
+      margin: 15px 0;
       background: #e3f2fd;
+      border-radius: 4px;
+      border-left: 4px solid #2196F3;
     }
-    button:disabled {
-      opacity: 0.5;
-    }
-    #processBtn {
+    button {
       padding: 10px 20px;
       background: #4CAF50;
       color: white;
       border: none;
       border-radius: 4px;
       cursor: pointer;
+      font-size: 16px;
+      margin: 5px 0;
+    }
+    button:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
+    }
+    #fileInput {
+      margin: 10px 0;
+    }
+    #results {
+      margin-top: 25px;
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 5px;
+      border: 1px solid #eee;
     }
     .debug-container {
-      background: #f8f9fa;
-      padding: 15px;
+      background: white;
+      padding: 20px;
       border-radius: 5px;
-      margin-top: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .debug-entry {
-      padding: 5px 0;
+      padding: 8px 0;
       border-bottom: 1px solid #eee;
+      font-family: monospace;
     }
     .match-result {
       display: flex;
-      margin: 10px 0;
-      padding: 10px;
-      background: white;
-      border-radius: 4px;
+      align-items: center;
+      margin: 15px 0;
+      padding: 15px;
+      background: #f5f5f5;
+      border-radius: 5px;
     }
     .symbol-preview svg {
-      width: 50px;
-      height: 50px;
-      margin-right: 15px;
+      width: 60px;
+      height: 60px;
+      margin-right: 20px;
     }
     .debug-error {
-      color: #dc3545;
-      padding: 10px;
-      background: #ffecec;
-      border-radius: 4px;
+      color: #d32f2f;
+      padding: 15px;
+      background: #ffebee;
+      border-radius: 5px;
+      margin: 15px 0;
     }
     .debug-suggestion {
       padding: 15px;
       background: #fff3cd;
-      border-radius: 4px;
-      margin-top: 10px;
+      border-radius: 5px;
+      margin: 15px 0;
     }
     .processing {
       text-align: center;
-      padding: 20px;
+      padding: 30px;
     }
     .spinner {
       border: 5px solid #f3f3f3;
@@ -94,13 +120,27 @@
       100% { transform: rotate(360deg); }
     }
     #debugCanvas {
-      max-width: 200px;
-      max-height: 200px;
+      max-width: 300px;
+      margin: 15px 0;
+    }
+    .match-details {
+      flex-grow: 1;
+    }
+    .match-details p {
+      margin: 5px 0;
+    }
+    .no-matches {
+      padding: 20px;
+      background: #fff3f3;
+      border-radius: 5px;
+    }
+    .no-matches ul {
+      padding-left: 20px;
     }
   </style>
 </head>
 <body>
-  <h1>Symbol Matcher Ver13</h1>
+  <h1>Advanced Symbol Matcher V15</h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
@@ -108,39 +148,40 @@
   
   <input type="file" id="fileInput" accept="image/*" disabled>
   <button id="processBtn" disabled>Match Symbols</button>
+  <button onclick="testWithSampleImage()">Test with Sample Image</button>
   
   <div>
     <canvas id="inputCanvas"></canvas>
     <canvas id="debugCanvas"></canvas>
   </div>
   
-  <div id="results">Waiting for initialization...</div>
+  <div id="results">Please load an image and click 'Match Symbols'</div>
 
   <!-- Reference SVGs -->
   <div id="svgTemplates" style="display: none;">
     <!-- ID: 0 -->
     <svg id="symbol0" viewBox="0 0 100 100">
-      <path d="M10,10 L90,10 L50,50 L90,90 L10,90 L50,50 Z" />
+      <path d="M10,10 L90,10 L50,50 L90,90 L10,90 L50,50 Z" fill="black"/>
     </svg>
     <!-- ID: 1 -->
     <svg id="symbol1" viewBox="0 0 100 100">
-      <polygon points="10,10 45,10 90,55 90,90 55,90 10,45" />
+      <polygon points="10,10 45,10 90,55 90,90 55,90 10,45" fill="black"/>
     </svg>
     <!-- ID: 2 -->
     <svg id="symbol2" viewBox="0 0 100 100">
-      <path d="M20,20 L80,20 L80,40 L40,40 L40,80 L20,80 Z" />
+      <path d="M20,20 L80,20 L80,40 L40,40 L40,80 L20,80 Z" fill="black"/>
     </svg>
     <!-- ID: 3 -->
     <svg id="symbol3" viewBox="0 0 100 100">
-      <path d="M10,10 L50,30 L90,10 L90,50 L70,50 L70,90 L30,90 L30,50 L10,50 Z" />
+      <path d="M10,10 L50,30 L90,10 L90,50 L70,50 L70,90 L30,90 L30,50 L10,50 Z" fill="black"/>
     </svg>
     <!-- ID: 4 -->
     <svg id="symbol4" viewBox="0 0 100 100">
-      <path d="M10,10 L90,10 L90,30 L30,30 L30,70 L90,70 L90,90 L10,90 Z" />
+      <path d="M10,10 L90,10 L90,30 L30,30 L30,70 L90,70 L90,90 L10,90 Z" fill="black"/>
     </svg>
     <!-- ID: 5 -->
     <svg id="symbol5" viewBox="0 0 100 100">
-      <polygon points="20,20 80,20 80,40 60,60 80,80 80,100 20,100 20,80 40,60 20,40" />
+      <polygon points="20,20 80,20 80,40 60,60 80,80 80,100 20,100 20,80 40,60 20,40" fill="black"/>
     </svg>
     <!-- ID: 6 -->
     <svg id="symbol6" viewBox="0 0 100 100">
@@ -191,16 +232,15 @@
 
   <script>
     // Configuration
-    const MIN_MATCHES = 5;
-    const MATCH_RATIO = 0.7;
+    const MIN_MATCHES = 4;
     const MAX_FEATURES = 500;
     const NUM_SYMBOLS = 16;
+    const MATCH_THRESHOLD = 60;
     
     // State
     let referenceDescriptors = [];
     let referenceKeypoints = [];
     let cvReady = false;
-    let symbolsLoaded = 0;
     
     // Load OpenCV.js
     const script = document.createElement('script');
@@ -210,7 +250,7 @@
     document.head.appendChild(script);
 
     function initApp() {
-      cv['onRuntimeInitialized'] = () => {
+      cv.onRuntimeInitialized = () => {
         cvReady = true;
         updateStatus("OpenCV.js ready - loading reference symbols...");
         loadReferenceSymbols();
@@ -221,31 +261,27 @@
       const container = document.getElementById('referenceSymbols');
       container.innerHTML = '';
       
-      // Create all reference symbol containers
       for (let i = 0; i < NUM_SYMBOLS; i++) {
         const div = document.createElement('div');
         div.className = 'symbol';
-        div.innerHTML = `<div>ID: ${i}</div>`;
+        div.innerHTML = `<div>Symbol ID: ${i}</div>`;
         container.appendChild(div);
       }
       
-      // Process each symbol
       updateStatus("Processing reference symbols...");
       processSymbol(0);
     }
 
     function processSymbol(i) {
       if (i >= NUM_SYMBOLS) {
-        updateStatus("All reference symbols loaded. Ready to match!");
+        updateStatus("Ready to match symbols!");
         document.getElementById('fileInput').disabled = false;
         document.getElementById('processBtn').disabled = false;
-        document.getElementById('results').textContent = "Upload an image and click 'Match Symbols'";
         return;
       }
       
       const canvas = document.createElement('canvas');
-      canvas.width = 100;
-      canvas.height = 100;
+      canvas.width = canvas.height = 100;
       const ctx = canvas.getContext('2d');
       
       // White background
@@ -266,28 +302,16 @@
           cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
           
           // Enhanced preprocessing
-          const equalized = new cv.Mat();
-          cv.equalizeHist(gray, equalized);
+          const blurred = new cv.Mat();
+          cv.GaussianBlur(gray, blurred, new cv.Size(3, 3), 0);
           
           const processed = new cv.Mat();
-          cv.adaptiveThreshold(
-            equalized,
-            processed,
-            255,
-            cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv.THRESH_BINARY_INV,
-            11,
-            2
-          );
+          cv.threshold(blurred, processed, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
           
           const orb = new cv.ORB(MAX_FEATURES);
           const keypoints = new cv.KeyPointVector();
           const descriptors = new cv.Mat();
-          
-          // Use empty mask for detection
-          const mask = new cv.Mat();
-          orb.detectAndCompute(processed, mask, keypoints, descriptors);
-          mask.delete();
+          orb.detectAndCompute(processed, new cv.Mat(), keypoints, descriptors);
           
           referenceDescriptors[i] = descriptors;
           referenceKeypoints[i] = keypoints;
@@ -297,14 +321,13 @@
           symbolDiv.prepend(canvas);
           
           // Cleanup
-          [src, gray, equalized, processed].forEach(m => m.delete());
+          [src, gray, blurred, processed].forEach(m => m.delete());
           
-          symbolsLoaded++;
-          updateStatus(`Loaded ${symbolsLoaded}/${NUM_SYMBOLS} symbols...`);
+          updateStatus(`Loaded ${i+1}/${NUM_SYMBOLS} symbols...`);
           processSymbol(i + 1);
         } catch (err) {
-          updateStatus(`Error processing symbol ${i}: ${err.message}`, true);
-          console.error(err);
+          console.error(`Error processing symbol ${i}:`, err);
+          updateStatus(`Error processing symbol ${i}`, true);
           processSymbol(i + 1);
         }
       };
@@ -325,8 +348,8 @@
           <div id="debugLog"></div>
           <div id="matchResults"></div>
           <div id="imageAnalysis">
-            <h4>Image Analysis</h4>
-            <canvas id="debugCanvas" width="200" height="200"></canvas>
+            <h4>Processed Image Preview</h4>
+            <canvas id="debugCanvas"></canvas>
             <div id="featureInfo"></div>
           </div>
         </div>
@@ -345,67 +368,50 @@
       }
 
       // Declare all OpenCV objects
-      let src, gray, equalized, processed, descriptors, orb, bf;
+      let src, gray, blurred, processed, descriptors, orb, bf;
       let keypoints = new cv.KeyPointVector();
 
       try {
-        // 1. Verify OpenCV
         if (!window.cv) throw new Error("OpenCV not loaded");
         logDebug("OpenCV is ready");
 
-        // 2. Load and verify input image
         const inputCanvas = document.getElementById('inputCanvas');
         if (!inputCanvas || inputCanvas.width === 0) {
-          throw new Error("No image loaded");
+          throw new Error("Please load an image first");
         }
         logDebug(`Input image loaded (${inputCanvas.width}x${inputCanvas.height})`);
 
-        // 3. Enhanced image processing
+        // Enhanced image processing
         src = cv.imread('inputCanvas');
         gray = new cv.Mat();
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
         
-        // Apply histogram equalization
-        equalized = new cv.Mat();
-        cv.equalizeHist(gray, equalized);
+        // Apply Gaussian blur
+        blurred = new cv.Mat();
+        cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
         
-        // Apply adaptive thresholding
+        // Apply automatic threshold using Otsu's method
         processed = new cv.Mat();
-        cv.adaptiveThreshold(
-          equalized,
-          processed,
-          255,
-          cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-          cv.THRESH_BINARY_INV,
-          11,
-          2
-        );
+        cv.threshold(blurred, processed, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
         
-        // Show processed image
+        // Show processed image for debugging
         cv.imshow('debugCanvas', processed);
-        logDebug("Image processed (equalized + thresholded)");
+        logDebug("Image processed (blurred + thresholded)");
 
-        // 4. Feature detection with proper mask
+        // Feature detection
         orb = new cv.ORB(MAX_FEATURES);
         descriptors = new cv.Mat();
-        
-        // Create empty mask
-        const mask = new cv.Mat();
-        orb.detectAndCompute(processed, mask, keypoints, descriptors);
-        mask.delete();
+        orb.detectAndCompute(processed, new cv.Mat(), keypoints, descriptors);
         
         const featureCount = keypoints.size();
-        featureInfo.innerHTML = `
-          <p>Features detected: <strong>${featureCount}</strong></p>
-          ${featureCount > 0 ? `<p>Average feature size: ${getAverageFeatureSize(keypoints)}px</p>` : ''}
-        `;
+        featureInfo.innerHTML = `<p>Features detected: <strong>${featureCount}</strong></p>`;
         logDebug(`Detected ${featureCount} features`);
 
-        if (featureCount < 10) {
-          throw new Error(`Only ${featureCount} features found - image may need better contrast or sharper edges`);
+        if (featureCount < 5) {
+          throw new Error(`Only ${featureCount} features found - try a clearer image`);
         }
 
-        // 5. Matching with reference symbols
+        // Matching with reference symbols
         const matches = [];
         bf = new cv.BFMatcher(cv.NORM_HAMMING, true);
         
@@ -419,7 +425,7 @@
             const matchResults = new cv.DMatchVector();
             bf.match(descriptors, referenceDescriptors[i], matchResults);
             
-            // Calculate match statistics with proper distance handling
+            // Calculate match statistics
             let minDistance = Infinity;
             let maxDistance = 0;
             const goodMatches = [];
@@ -432,7 +438,7 @@
                 minDistance = Math.min(minDistance, distance);
                 maxDistance = Math.max(maxDistance, distance);
                 
-                if (distance < 50) {
+                if (distance < MATCH_THRESHOLD) {
                   goodMatches.push(m);
                 }
               } catch (e) {
@@ -445,7 +451,7 @@
             if (goodMatches.length >= MIN_MATCHES) {
               matches.push({
                 symbolId: i,
-                confidence: Math.min(100, (goodMatches.length / featureCount) * 200),
+                confidence: Math.min(100, (goodMatches.length * 100) / (featureCount/2)),
                 matches: goodMatches
               });
             }
@@ -457,101 +463,62 @@
           }
         }
 
-        // 6. Display results
+        // Display results
         if (matches.length > 0) {
-          displayMatchResults(matches);
+          matches.sort((a, b) => b.confidence - a.confidence);
+          let resultsHTML = '<h3>Top Matches:</h3>';
+          
+          matches.slice(0, 3).forEach(match => {
+            const svg = document.getElementById(`symbol${match.symbolId}`).cloneNode(true);
+            svg.style.width = '60px';
+            svg.style.height = '60px';
+            
+            resultsHTML += `
+              <div class="match-result">
+                <div class="symbol-preview">${svg.outerHTML}</div>
+                <div class="match-details">
+                  <p><strong>Symbol ID:</strong> ${match.symbolId}</p>
+                  <p><strong>Confidence:</strong> ${match.confidence.toFixed(1)}%</p>
+                  <p><strong>Matches:</strong> ${match.matches.length}</p>
+                </div>
+              </div>
+            `;
+          });
+          
+          document.getElementById('matchResults').innerHTML = resultsHTML;
+          logDebug(`Best match: Symbol ${matches[0].symbolId} (${matches[0].confidence.toFixed(1)}% confidence)`);
         } else {
-          displayNoMatches(featureCount);
+          document.getElementById('matchResults').innerHTML = `
+            <div class="no-matches">
+              <h3>No Confident Matches Found</h3>
+              <p>Detected ${featureCount} features but no strong matches.</p>
+              <p><strong>Suggestions:</strong></p>
+              <ul>
+                <li>Use higher contrast between symbols and background</li>
+                <li>Ensure symbols match the reference shapes exactly</li>
+                <li>Try larger symbols in the image (minimum 100x100 pixels)</li>
+                <li>Check the processed image preview for clarity</li>
+              </ul>
+            </div>
+          `;
+          logDebug("No matches met the confidence threshold");
         }
 
       } catch (err) {
-        handleError(err);
-        
-        // Additional troubleshooting for low feature count
-        if (err.message.includes("features found")) {
-          debugLog.innerHTML += `
-            <div class="debug-suggestion">
-              <h4>Troubleshooting Tips</h4>
-              <ol>
-                <li>Try a higher contrast image (black symbols on white background)</li>
-                <li>Make symbols larger in the image (at least 100x100 pixels)</li>
-                <li>Use simpler shapes that match the reference symbols exactly</li>
-                <li>Ensure good lighting with no shadows or glare</li>
-              </ol>
-              <button onclick="testWithSampleImage()">Test with Sample Image</button>
-            </div>
-          `;
-        }
+        console.error("Matching error:", err);
+        document.getElementById('results').innerHTML += `
+          <div class="debug-error">
+            <h4>Error: ${err.message}</h4>
+            <p>Please check the browser console for details</p>
+          </div>
+        `;
       } finally {
         // Clean up OpenCV objects
-        [src, gray, equalized, processed, descriptors, orb, bf].forEach(obj => {
+        [src, gray, blurred, processed, descriptors, orb, bf].forEach(obj => {
           if (obj && !obj.isDeleted) obj.delete();
         });
         if (keypoints && !keypoints.isDeleted) keypoints.delete();
         document.getElementById('processBtn').disabled = false;
-      }
-
-      function displayMatchResults(matches) {
-        let resultsHTML = '<h3>Matches Found:</h3>';
-        matches.sort((a, b) => b.confidence - a.confidence).forEach(match => {
-          const symbolSvg = document.getElementById(`symbol${match.symbolId}`)?.outerHTML || `Symbol ${match.symbolId}`;
-          resultsHTML += `
-            <div class="match-result">
-              <div class="symbol-preview">${symbolSvg}</div>
-              <div class="match-details">
-                <p>Symbol ID: ${match.symbolId}</p>
-                <p>Confidence: ${match.confidence.toFixed(1)}%</p>
-                <p>Matches: ${match.matches.length}</p>
-              </div>
-            </div>
-          `;
-        });
-        document.getElementById('matchResults').innerHTML = resultsHTML;
-        logDebug(`Found ${matches.length} potential matches`);
-      }
-
-      function displayNoMatches(featureCount) {
-        document.getElementById('matchResults').innerHTML = `
-          <div class="no-matches">
-            <h3>No Matches Found</h3>
-            <div class="diagnosis">
-              <p>Detected ${featureCount} features but found no matches.</p>
-              <p><strong>Possible solutions:</strong></p>
-              <ol>
-                <li>Ensure symbols match the reference shapes exactly</li>
-                <li>Try higher contrast between symbol and background</li>
-                <li>Use sharper images with better lighting</li>
-                <li>Make symbols larger in the image</li>
-              </ol>
-            </div>
-          </div>
-        `;
-        logDebug("No matches met the confidence threshold");
-      }
-
-      function handleError(err) {
-        const errorMessage = err.message || "Unknown error occurred";
-        debugLog.innerHTML += `
-          <div class="debug-error">
-            <h4>Error Occurred</h4>
-            <p>${errorMessage}</p>
-            <p>Check browser console for details</p>
-          </div>
-        `;
-        console.error("Matching error:", err);
-      }
-
-      function getAverageFeatureSize(keypoints) {
-        if (!keypoints || keypoints.size() === 0) return "0";
-        let totalSize = 0;
-        for (let i = 0; i < keypoints.size(); i++) {
-          try {
-            totalSize += keypoints.get(i).size;
-          } catch (e) {
-            console.warn(`Error getting keypoint ${i}:`, e);
-          }
-        }
-        return (totalSize / keypoints.size()).toFixed(1);
       }
     }
 
@@ -573,12 +540,11 @@
       ctx.closePath();
       ctx.fill();
       
-      // Run matching
-      matchSymbols();
+      updateStatus("Test image loaded. Click 'Match Symbols'");
+      document.getElementById('results').innerHTML = "Ready to match test image...";
     }
 
     function updateStatus(message, isError = false) {
-      console.log(message);
       const statusDiv = document.getElementById('status');
       statusDiv.textContent = message;
       statusDiv.style.background = isError ? '#ffebee' : '#e3f2fd';
