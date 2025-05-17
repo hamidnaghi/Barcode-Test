@@ -60,7 +60,7 @@
   </style>
 </head>
 <body>
-  <h1>Symbol Matcher Ver6</h1>
+  <h1>Symbol Matcher Ver7</h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
@@ -274,179 +274,201 @@
 
 
 function matchSymbols() {
-  // Basic validation
-  if (!window.cv) {
-    updateStatus("OpenCV.js not loaded", true);
-    return;
-  }
-
-  const canvas = document.getElementById('inputCanvas');
-  if (!canvas || canvas.width === 0) {
-    updateStatus("Please load an image first", true);
-    return;
-  }
-
-  // UI Setup
-  updateStatus("Starting matching process...");
-  document.getElementById('processBtn').disabled = true;
+  // Reset UI
   document.getElementById('results').innerHTML = `
-    <div class="processing">
-      <div class="spinner"></div>
-      <p>Processing image...</p>
-      <div id="processingDetails"></div>
+    <div class="debug-container">
+      <h3>Matching Process</h3>
+      <div id="debugLog"></div>
+      <div id="matchResults"></div>
+      <div id="imageAnalysis">
+        <h4>Image Analysis</h4>
+        <canvas id="debugCanvas" width="200" height="200"></canvas>
+        <div id="featureInfo"></div>
+      </div>
     </div>
   `;
+  
+  const debugLog = document.getElementById('debugLog');
+  const debugCanvas = document.getElementById('debugCanvas');
+  const featureInfo = document.getElementById('featureInfo');
 
-  // Main processing
-  setTimeout(async () => {
-    try {
-      // 1. Load and prepare image (simpler approach)
-      const src = cv.imread('inputCanvas');
-      if (src.empty()) throw new Error("Failed to read image");
-      
-      const gray = new cv.Mat();
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      
-      // Simple threshold instead of adaptive for reliability
-      const processed = new cv.Mat();
-      cv.threshold(gray, processed, 128, 255, cv.THRESH_BINARY_INV);
-      
-      updateProcessingDetails("Image preprocessed");
-
-      // 2. Feature detection with simpler settings
-      const orb = new cv.ORB(300); // Reduced feature count for stability
-      const keypoints = new cv.KeyPointVector();
-      const descriptors = new cv.Mat();
-      orb.detectAndCompute(processed, new cv.Mat(), keypoints, descriptors);
-      
-      const featureCount = keypoints.size();
-      updateProcessingDetails(`Found ${featureCount} features`);
-      
-      if (featureCount < 5) {
-        throw new Error("Not enough features detected");
-      }
-
-      // 3. Basic matching (without geometric verification)
-      const matches = [];
-      const bf = new cv.BFMatcher(cv.NORM_HAMMING, true);
-      
-      for (let i = 0; i < NUM_SYMBOLS; i++) {
-        if (!referenceDescriptors[i]) continue;
-        
-        try {
-          const matchResults = new cv.DMatchVector();
-          bf.match(descriptors, referenceDescriptors[i], matchResults);
-          
-          // Simple distance-based filtering
-          const goodMatches = [];
-          for (let j = 0; j < matchResults.size(); j++) {
-            const m = matchResults.get(j);
-            if (m.distance < 50) { // Simple distance threshold
-              goodMatches.push(m);
-            }
-          }
-          
-          if (goodMatches.length >= 5) {
-            matches.push({
-              symbolId: i,
-              confidence: Math.min(100, goodMatches.length * 2),
-              matches: goodMatches
-            });
-          }
-          
-          matchResults.delete();
-        } catch (e) {
-          console.warn(`Error matching symbol ${i}:`, e);
-        }
-      }
-
-      // 4. Show results
-      if (matches.length > 0) {
-        matches.sort((a, b) => b.confidence - a.confidence);
-        showSimpleResults(matches);
-        updateStatus(`Found ${matches.length} matches`);
-      } else {
-        showNoMatchesSimple(featureCount);
-      }
-      
-    } catch (err) {
-      handleMainError(err);
-    } finally {
-      document.getElementById('processBtn').disabled = false;
-    }
-  }, 100);
-
-  // Helper functions
-  function updateProcessingDetails(message) {
-    const detailsEl = document.getElementById('processingDetails');
-    if (detailsEl) {
-      const entry = document.createElement('p');
-      entry.textContent = `✓ ${message}`;
-      detailsEl.appendChild(entry);
-    }
+  function logDebug(message) {
+    const entry = document.createElement('div');
+    entry.className = 'debug-entry';
+    entry.textContent = `• ${message}`;
+    debugLog.appendChild(entry);
     console.log(message);
   }
 
-  function showSimpleResults(matches) {
-    let html = '<h3>Possible Matches:</h3>';
-    matches.slice(0, 3).forEach(match => {
-      const symbolId = match.symbolId;
-      const svg = document.getElementById(`symbol${symbolId}`).cloneNode(true);
-      svg.style.width = '50px';
-      svg.style.height = '50px';
+  try {
+    // 1. Verify OpenCV is ready
+    if (!window.cv) throw new Error("OpenCV not loaded");
+    logDebug("OpenCV is ready");
+
+    // 2. Verify input image
+    const inputCanvas = document.getElementById('inputCanvas');
+    if (!inputCanvas || inputCanvas.width === 0) {
+      throw new Error("No image loaded");
+    }
+    logDebug(`Input image loaded (${inputCanvas.width}x${inputCanvas.height})`);
+
+    // 3. Process image with debug visualization
+    const src = cv.imread('inputCanvas');
+    const gray = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    
+    // Show processed image
+    cv.imshow('debugCanvas', gray);
+    logDebug("Converted to grayscale");
+
+    // 4. Feature detection with debug info
+    const orb = new cv.ORB(500);
+    const keypoints = new cv.KeyPointVector();
+    const descriptors = new cv.Mat();
+    orb.detectAndCompute(gray, new cv.Mat(), keypoints, descriptors);
+    
+    const featureCount = keypoints.size();
+    featureInfo.innerHTML = `
+      <p>Features detected: <strong>${featureCount}</strong></p>
+      <p>Average feature size: ${getAverageFeatureSize(keypoints)}px</p>
+    `;
+    logDebug(`Detected ${featureCount} features`);
+
+    if (featureCount < 10) {
+      throw new Error("Insufficient features for matching");
+    }
+
+    // 5. Matching with reference symbols
+    const matches = [];
+    const bf = new cv.BFMatcher(cv.NORM_HAMMING, true);
+    
+    for (let i = 0; i < NUM_SYMBOLS; i++) {
+      if (!referenceDescriptors[i]) continue;
       
-      html += `
-        <div class="match">
-          ${svg.outerHTML}
-          <div>
-            <strong>Symbol ID:</strong> ${symbolId}<br>
-            <strong>Confidence:</strong> ${match.confidence}%
+      const matchResults = new cv.DMatchVector();
+      bf.match(descriptors, referenceDescriptors[i], matchResults);
+      
+      // Filter good matches
+      const goodMatches = [];
+      let minDistance = Infinity, maxDistance = 0;
+      
+      for (let j = 0; j < matchResults.size(); j++) {
+        const m = matchResults.get(j);
+        minDistance = Math.min(minDistance, m.distance);
+        maxDistance = Math.max(maxDistance, m.distance);
+        if (m.distance < 50) goodMatches.push(m);
+      }
+      
+      logDebug(`Symbol ${i}: ${goodMatches.length} good matches (distances ${minDistance.toFixed(1)}-${maxDistance.toFixed(1)})`);
+      
+      if (goodMatches.length >= 5) {
+        matches.push({
+          symbolId: i,
+          confidence: Math.min(100, (goodMatches.length / featureCount) * 200),
+          matches: goodMatches
+        });
+      }
+      
+      matchResults.delete();
+    }
+
+    // 6. Display results with diagnostics
+    if (matches.length > 0) {
+      let resultsHTML = '<h3>Matches Found:</h3>';
+      matches.sort((a, b) => b.confidence - a.confidence).forEach(match => {
+        resultsHTML += `
+          <div class="match-result">
+            <div class="symbol-preview">${document.getElementById(`symbol${match.symbolId}`).outerHTML}</div>
+            <div class="match-details">
+              <p>Symbol ID: ${match.symbolId}</p>
+              <p>Confidence: ${match.confidence.toFixed(1)}%</p>
+              <p>Matches: ${match.matches.length}</p>
+            </div>
+          </div>
+        `;
+      });
+      document.getElementById('matchResults').innerHTML = resultsHTML;
+      logDebug(`Found ${matches.length} potential matches`);
+    } else {
+      document.getElementById('matchResults').innerHTML = `
+        <div class="no-matches">
+          <h3>No Matches Found</h3>
+          <div class="diagnosis">
+            <p><strong>Possible reasons:</strong></p>
+            <ul>
+              <li>Symbols in image don't match reference shapes</li>
+              <li>Insufficient contrast in the image</li>
+              <li>Symbols are too small or blurry</li>
+              <li>Viewing angle is too different from reference</li>
+            </ul>
+            <div class="debug-tips">
+              <p>Debug tips:</p>
+              <ol>
+                <li>Compare your image with the reference symbols above</li>
+                <li>Check the processed image (grayscale) to the right</li>
+                <li>Verify features were detected (${featureCount} found)</li>
+              </ol>
+            </div>
           </div>
         </div>
       `;
-    });
-    
-    document.getElementById('results').innerHTML = html;
-  }
+      logDebug("No matches met the confidence threshold");
+    }
 
-  function showNoMatchesSimple(featureCount) {
-    document.getElementById('results').innerHTML = `
-      <div class="no-matches">
-        <h3>No Matches Found</h3>
-        <p>Detected ${featureCount} features but found no matches.</p>
-        <div class="tips">
-          <p><strong>Tips:</strong></p>
-          <ol>
-            <li>Use clear, high-contrast images</li>
-            <li>Ensure symbols match the reference shapes</li>
-            <li>Try cropping to just the symbol</li>
-            <li>Use proper lighting</li>
-          </ol>
-        </div>
+  } catch (err) {
+    debugLog.innerHTML += `
+      <div class="debug-error">
+        <h4>Error Occurred</h4>
+        <p>${err.message}</p>
+        <p>Check console for details</p>
       </div>
     `;
-    updateStatus("No matches found", true);
-  }
-
-  function handleMainError(err) {
-    console.error("Processing error:", err);
-    
-    document.getElementById('results').innerHTML = `
-      <div class="error">
-        <h3>Processing Error</h3>
-        <p>${err.message || "Unknown error occurred"}</p>
-        <div class="debug">
-          <p><strong>Debug info:</strong></p>
-          <p>OpenCV ready: ${window.cv ? 'Yes' : 'No'}</p>
-          <p>Error type: ${err.name || 'N/A'}</p>
-        </div>
-        <button onclick="location.reload()">Reload Page</button>
-      </div>
-    `;
-    updateStatus("Processing failed", true);
+    console.error("Matching error:", err);
+  } finally {
+    document.getElementById('processBtn').disabled = false;
   }
 }
 
+// Helper function to analyze features
+function getAverageFeatureSize(keypoints) {
+  let totalSize = 0;
+  for (let i = 0; i < keypoints.size(); i++) {
+    totalSize += keypoints.get(i).size;
+  }
+  return (totalSize / keypoints.size()).toFixed(1);
+}
+
+// Add this CSS to your style section:
+/*
+.debug-container {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 5px;
+  margin-top: 20px;
+}
+.debug-entry {
+  padding: 5px 0;
+  border-bottom: 1px solid #eee;
+}
+.match-result {
+  display: flex;
+  margin: 10px 0;
+  padding: 10px;
+  background: white;
+  border-radius: 4px;
+}
+.symbol-preview svg {
+  width: 50px;
+  height: 50px;
+  margin-right: 15px;
+}
+.debug-error {
+  color: #dc3545;
+  padding: 10px;
+  background: #ffecec;
+  border-radius: 4px;
+}
+*/
 
 
     
