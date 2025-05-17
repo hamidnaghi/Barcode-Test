@@ -60,7 +60,7 @@
   </style>
 </head>
 <body>
-  <h1>Symbol Matcher Ver1</h1>
+  <h1>Symbol Matcher Ver2</h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
@@ -268,106 +268,121 @@
       img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
     }
 
-    function matchSymbols() {
-      if (!cvReady) {
-        updateStatus("OpenCV not ready yet", true);
-        return;
+
+
+function matchSymbols() {
+  if (!cvReady) {
+    updateStatus("OpenCV not ready yet", true);
+    return;
+  }
+  
+  const canvas = document.getElementById('inputCanvas');
+  if (canvas.width === 0) {
+    updateStatus("Please load an image first", true);
+    return;
+  }
+  
+  updateStatus("Starting symbol matching...");
+  document.getElementById('processBtn').disabled = true;
+  
+  setTimeout(() => {
+    let src, gray, processed, orb, inputKeypoints, inputDescriptors, bf;
+    
+    try {
+      // Process input image
+      src = cv.imread('inputCanvas');
+      gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      
+      processed = new cv.Mat();
+      cv.threshold(gray, processed, 128, 255, cv.THRESH_BINARY_INV);
+      
+      // Detect features
+      orb = new cv.ORB(MAX_FEATURES);
+      inputKeypoints = new cv.KeyPointVector();
+      inputDescriptors = new cv.Mat();
+      orb.detectAndCompute(processed, new cv.Mat(), inputKeypoints, inputDescriptors);
+      
+      if (inputKeypoints.size() === 0) {
+        throw new Error("No features detected in the input image");
       }
       
-      const canvas = document.getElementById('inputCanvas');
-      if (canvas.width === 0) {
-        updateStatus("Please load an image first", true);
-        return;
-      }
+      updateStatus(`Found ${inputKeypoints.size()} features in input image`);
       
-      updateStatus("Starting symbol matching...");
-      document.getElementById('processBtn').disabled = true;
+      // Match against reference symbols
+      const matches = [];
+      bf = new cv.BFMatcher(cv.NORM_HAMMING, false);
       
-      setTimeout(() => {
-        try {
-          // Process input image
-          const src = cv.imread('inputCanvas');
-          const gray = new cv.Mat();
-          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-          
-          const processed = new cv.Mat();
-          cv.threshold(gray, processed, 128, 255, cv.THRESH_BINARY_INV);
-          
-          // Detect features
-          const orb = new cv.ORB(MAX_FEATURES);
-          const inputKeypoints = new cv.KeyPointVector();
-          const inputDescriptors = new cv.Mat();
-          orb.detectAndCompute(processed, new cv.Mat(), inputKeypoints, inputDescriptors);
-          
-          updateStatus(`Found ${inputKeypoints.size()} features in input image`);
-          
-          // Match against reference symbols
-          const matches = [];
-          const bf = new cv.BFMatcher(cv.NORM_HAMMING, false);
-          
-          for (let i = 0; i < NUM_SYMBOLS; i++) {
-            if (!referenceDescriptors[i]) continue;
-            
-            const knnMatches = new cv.DMatchVectorVector();
-            bf.knnMatch(inputDescriptors, referenceDescriptors[i], knnMatches, 2);
-            
-            // Apply ratio test
-            const goodMatches = [];
-            for (let j = 0; j < knnMatches.size(); j++) {
-              const pair = knnMatches.get(j);
-              if (pair.size() >= 2) {
-                const m1 = pair.get(0);
-                const m2 = pair.get(1);
-                if (m1.distance < MATCH_RATIO * m2.distance) {
-                  goodMatches.push(m1);
-                }
-              }
-            }
-            
-            if (goodMatches.length >= MIN_MATCHES) {
-              const confidence = goodMatches.length / MAX_FEATURES;
-              matches.push({
-                symbolId: i,
-                confidence: confidence,
-                matches: goodMatches
-              });
-            }
-            
-            knnMatches.delete();
-          }
-          
-          // Show results
-          if (matches.length > 0) {
-            matches.sort((a, b) => b.confidence - a.confidence);
-            showResults(matches);
-            drawMatches(src, matches);
-            updateStatus(`Matched ${matches.length} symbols!`);
-          } else {
-            updateStatus("No symbols matched. Try a clearer image.", true);
-            document.getElementById('results').innerHTML = 
-              "No symbols matched. Try:<br>" +
-              "- Clearer image<br>" +
-              "- Higher contrast<br>" + 
-              "- Larger symbols";
-          }
-          
-          // Clean up
-          src.delete();
-          gray.delete();
-          processed.delete();
-          inputKeypoints.delete();
-          inputDescriptors.delete();
-          orb.delete();
-          bf.delete();
-          
-        } catch (err) {
-          updateStatus(`Error: ${err.message}`, true);
-          console.error(err);
-        } finally {
-          document.getElementById('processBtn').disabled = false;
+      for (let i = 0; i < NUM_SYMBOLS; i++) {
+        if (!referenceDescriptors[i] || referenceDescriptors[i].empty()) {
+          continue;
         }
-      }, 100);
+        
+        const knnMatches = new cv.DMatchVectorVector();
+        bf.knnMatch(inputDescriptors, referenceDescriptors[i], knnMatches, 2);
+        
+        // Apply ratio test
+        const goodMatches = [];
+        for (let j = 0; j < knnMatches.size(); j++) {
+          const pair = knnMatches.get(j);
+          if (pair.size() >= 2) {
+            const m1 = pair.get(0);
+            const m2 = pair.get(1);
+            if (m1.distance < MATCH_RATIO * m2.distance) {
+              goodMatches.push(m1);
+            }
+          }
+        }
+        
+        if (goodMatches.length >= MIN_MATCHES) {
+          const confidence = goodMatches.length / MAX_FEATURES;
+          matches.push({
+            symbolId: i,
+            confidence: confidence,
+            matches: goodMatches
+          });
+        }
+        
+        knnMatches.delete();
+      }
+      
+      // Show results
+      if (matches.length > 0) {
+        matches.sort((a, b) => b.confidence - a.confidence);
+        showResults(matches);
+        drawMatches(src, matches);
+        updateStatus(`Matched ${matches.length} symbols!`);
+      } else {
+        updateStatus("No symbols matched. Try a clearer image.", true);
+        document.getElementById('results').innerHTML = 
+          "No symbols matched. Try:<br>" +
+          "- Clearer image<br>" +
+          "- Higher contrast<br>" + 
+          "- Larger symbols<br>" +
+          "- Different angle or lighting";
+      }
+      
+    } catch (err) {
+      console.error("Detailed error:", err);
+      updateStatus(`Error during matching: ${err.message || "Unknown error"}`, true);
+      document.getElementById('results').textContent = 
+        `Error occurred: ${err.message || "Unknown error"}. Check console for details.`;
+    } finally {
+      // Clean up
+      if (src) src.delete();
+      if (gray) gray.delete();
+      if (processed) processed.delete();
+      if (inputKeypoints) inputKeypoints.delete();
+      if (inputDescriptors) inputDescriptors.delete();
+      if (orb) orb.delete();
+      if (bf) bf.delete();
+      
+      document.getElementById('processBtn').disabled = false;
     }
+  }, 100);
+}
+
+    
 
     function showResults(matches) {
       let html = '<h3>Matched Symbols:</h3>';
