@@ -1,0 +1,54 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Symbol Detection</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    canvas, img { max-width: 100%; }
+  </style>
+</head>
+<body>
+  <h1>Symbol Detection (Offline with OpenCV.js)</h1>
+  <p>Upload a JPG image containing symbols:</p>
+  <input type="file" id="imageInput" accept=".jpg,.jpeg,.png" />
+  <p id="status">Loading OpenCV...</p>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <script src="opencv.js" type="text/javascript"></script>
+  <script>
+    let cvReady = false;
+
+    function onOpenCvReady() {
+      document.getElementById('status').innerText = 'OpenCV.js loaded. Please upload an image.';
+      cvReady = true;
+    }
+
+    document.getElementById('imageInput').addEventListener('change', (e) => {
+      if (!cvReady) {
+        alert('OpenCV is not ready yet!');
+        return;
+      }
+      const file = e.target.files[0];
+      const img = new Image();
+      img.onload = function () {
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        const src = cv.imread(canvas);
+        const dst = new cv.Mat();
+        cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
+        cv.imshow('canvas', dst);
+        src.delete();
+        dst.delete();
+        document.getElementById('status').innerText = 'Image loaded. Symbol detection logic goes here.';
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  </script>
+</body>
+</html>
