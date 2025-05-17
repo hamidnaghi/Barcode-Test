@@ -60,7 +60,7 @@
   </style>
 </head>
 <body>
-  <h1>Symbol Matcher Ver3</h1>
+  <h1>Symbol Matcher Ver4</h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
@@ -272,176 +272,192 @@
 
 
 
+
 function matchSymbols() {
   if (!cvReady) {
     updateStatus("OpenCV not ready yet", true);
     return;
   }
-  
+
   const canvas = document.getElementById('inputCanvas');
   if (canvas.width === 0) {
     updateStatus("Please load an image first", true);
     return;
   }
-  
+
   updateStatus("Starting symbol matching...");
   document.getElementById('processBtn').disabled = true;
-  
-  // Show loading indicator
-  document.getElementById('results').innerHTML = 
-    '<div style="text-align: center; padding: 20px;">Processing image...</div>';
-  
+  document.getElementById('results').innerHTML = '<div class="processing">Processing image...<div class="spinner"></div></div>';
+
   setTimeout(() => {
     let src, gray, processed, orb, inputKeypoints, inputDescriptors, bf;
-    
+
     try {
-      // 1. Load and preprocess input image
+      // 1. Load and preprocess image with enhanced contrast
       src = cv.imread('inputCanvas');
       gray = new cv.Mat();
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      
-      // Apply adaptive thresholding for better feature detection
+
+      // Enhanced preprocessing
       processed = new cv.Mat();
+      cv.GaussianBlur(gray, gray, new cv.Size(3, 3), 0);
+      cv.equalizeHist(gray, gray);
       cv.adaptiveThreshold(
-        gray, 
-        processed, 
-        255, 
-        cv.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv.THRESH_BINARY_INV, 
-        11, 
+        gray,
+        processed,
+        255,
+        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv.THRESH_BINARY_INV,
+        11,
         2
       );
-      
-      // 2. Detect features
-      orb = new cv.ORB(MAX_FEATURES);
+
+      // 2. Detect features with increased sensitivity
+      orb = new cv.ORB({
+        nFeatures: MAX_FEATURES,
+        scaleFactor: 1.2,
+        edgeThreshold: 15
+      });
       inputKeypoints = new cv.KeyPointVector();
       inputDescriptors = new cv.Mat();
       orb.detectAndCompute(processed, new cv.Mat(), inputKeypoints, inputDescriptors);
-      
-      if (inputKeypoints.size() === 0) {
-        throw new Error("No features detected - try a clearer image with better contrast");
+
+      const featureCount = inputKeypoints.size();
+      if (featureCount < 10) {
+        throw new Error(`Only ${featureCount} features found - image may be too blurry or low contrast`);
       }
-      
-      updateStatus(`Found ${inputKeypoints.size()} features in input image`);
-      
-      // 3. Match against reference symbols
+
+      updateStatus(`Detected ${featureCount} features`);
+
+      // 3. Multi-stage matching process
       const matches = [];
-      bf = new cv.BFMatcher(cv.NORM_HAMMING, true); // Cross-check enabled for better matches
-      
+      bf = new cv.BFMatcher(cv.NORM_HAMMING, true); // Enable cross-check
+
       for (let i = 0; i < NUM_SYMBOLS; i++) {
-        if (!referenceDescriptors[i] || referenceDescriptors[i].empty()) {
-          continue;
-        }
-        
+        if (!referenceDescriptors[i] || referenceDescriptors[i].empty()) continue;
+
         try {
-          // First pass: Regular matching
+          // First stage: Basic matching
           const knnMatches = new cv.DMatchVectorVector();
           bf.knnMatch(inputDescriptors, referenceDescriptors[i], knnMatches, 2);
-          
-          // Ratio test
+
+          // Apply ratio test with dynamic threshold
           const goodMatches = [];
+          const distances = [];
+          
           for (let j = 0; j < knnMatches.size(); j++) {
             const pair = knnMatches.get(j);
             if (pair.size() >= 2) {
               const m1 = pair.get(0);
               const m2 = pair.get(1);
-              if (m1.distance < MATCH_RATIO * m2.distance) {
+              distances.push(m1.distance);
+              if (m1.distance < 0.75 * m2.distance) {
                 goodMatches.push(m1);
               }
             }
           }
-          
-          // Second pass: Geometric verification
-          if (goodMatches.length >= MIN_MATCHES) {
+
+          // Second stage: Geometric verification
+          if (goodMatches.length >= 5) {
             const srcPoints = new cv.Mat();
             const dstPoints = new cv.Mat();
-            
+
             for (const m of goodMatches) {
               const kp1 = inputKeypoints.get(m.queryIdx);
               const kp2 = referenceKeypoints[i].get(m.trainIdx);
               srcPoints.push_back([kp1.pt.x, kp1.pt.y]);
               dstPoints.push_back([kp2.pt.x, kp2.pt.y]);
             }
-            
-            const homography = cv.findHomography(srcPoints, dstPoints, cv.RANSAC, 3);
+
+            const homography = cv.findHomography(srcPoints, dstPoints, cv.RANSAC, 5);
             if (homography && !homography.empty()) {
-              // Count inliers
-              let inliers = 0;
               const mask = homography.getInliers();
+              let inliers = 0;
               for (let k = 0; k < mask.rows; k++) {
                 if (mask.data[k] === 1) inliers++;
               }
-              
-              if (inliers >= MIN_MATCHES) {
-                const confidence = (inliers / MAX_FEATURES) * 100;
+
+              if (inliers >= 5) {
+                const confidence = Math.min(100, Math.round((inliers / goodMatches.length) * 100));
                 matches.push({
                   symbolId: i,
-                  confidence: Math.min(100, Math.round(confidence)),
+                  confidence: confidence,
                   matches: goodMatches,
                   inliers: inliers
                 });
               }
             }
-            
+
             srcPoints.delete();
             dstPoints.delete();
             if (homography) homography.delete();
           }
-          
+
           knnMatches.delete();
         } catch (err) {
-          console.warn(`Error matching symbol ${i}:`, err);
+          console.warn(`Error processing symbol ${i}:`, err);
         }
       }
-      
-      // 4. Show results
+
+      // 4. Display results with enhanced feedback
       if (matches.length > 0) {
         matches.sort((a, b) => b.confidence - a.confidence);
         showResults(matches);
         drawMatches(src, matches);
-        updateStatus(`Matched ${matches.length} symbols with confidence ${matches[0].confidence}%`);
+        updateStatus(`Success! Found ${matches.length} matches`);
       } else {
-        updateStatus("No symbols matched. Try:", true);
+        let debugInfo = `Features detected: ${featureCount}`;
+        if (featureCount < 30) {
+          debugInfo += " (low - try sharper image)";
+        } else if (featureCount > 500) {
+          debugInfo += " (high - possible noise)";
+        }
+
         document.getElementById('results').innerHTML = `
-          <div style="padding: 15px; background: #fff3f3; border-radius: 5px;">
-            <h3>No symbols matched. Please try:</h3>
-            <ul>
-              <li>A clearer, higher contrast image</li>
-              <li>Larger symbols in the image</li>
-              <li>Different lighting conditions</li>
-              <li>More direct angle (not tilted)</li>
-              <li>Symbols that match the reference shapes</li>
-            </ul>
-            <p>Debug info: Found ${inputKeypoints.size()} features but no matches met our criteria.</p>
+          <div class="no-matches">
+            <h3>No Symbols Matched</h3>
+            <p>${debugInfo}</p>
+            <div class="suggestions">
+              <strong>Try these adjustments:</strong>
+              <ul>
+                <li>Use higher contrast images</li>
+                <li>Ensure symbols are clearly visible</li>
+                <li>Try different lighting conditions</li>
+                <li>Make symbols occupy at least 20% of image</li>
+                <li>Avoid blur or camera shake</li>
+              </ul>
+              <p>For best results, compare with the reference symbols shown above.</p>
+            </div>
           </div>
         `;
+        updateStatus("No matches found - see suggestions", true);
       }
-      
+
     } catch (err) {
-      console.error("Matching error:", err);
-      updateStatus("Processing error", true);
+      console.error("Matching failed:", err);
       document.getElementById('results').innerHTML = `
-        <div style="color: #d32f2f; padding: 15px; background: #ffebee; border-radius: 5px;">
-          <h3>Error processing image:</h3>
-          <p>${err.message || "Unknown error"}</p>
-          <p>Please check the console for details.</p>
+        <div class="error">
+          <h3>Processing Error</h3>
+          <p>${err.message || "Unknown error occurred"}</p>
+          <p>Please check the console for technical details.</p>
         </div>
       `;
+      updateStatus("Error during processing", true);
     } finally {
-      // Clean up
-      if (src) src.delete();
-      if (gray) gray.delete();
-      if (processed) processed.delete();
-      if (inputKeypoints) inputKeypoints.delete();
-      if (inputDescriptors) inputDescriptors.delete();
-      if (orb) orb.delete();
-      if (bf) bf.delete();
-      
+      // Cleanup
+      [src, gray, processed, orb, inputKeypoints, inputDescriptors, bf].forEach(item => {
+        if (item) item.delete();
+      });
       document.getElementById('processBtn').disabled = false;
     }
   }, 100);
 }
 
+
+
+
+
+    
 
     
     
