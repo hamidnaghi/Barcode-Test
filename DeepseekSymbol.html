@@ -154,6 +154,7 @@
     const MIN_MATCHES = 10;
     const MATCH_RATIO = 0.7;
     const MAX_FEATURES = 500;
+    const NUM_SYMBOLS = 16; // Number of symbols defined (0-15)
     
     // State
     let referenceDescriptors = [];
@@ -181,7 +182,7 @@
       container.innerHTML = '';
       
       // Create all reference symbol containers first
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < NUM_SYMBOLS; i++) {
         const div = document.createElement('div');
         div.className = 'symbol';
         div.innerHTML = `<div>ID: ${i}</div>`;
@@ -194,7 +195,7 @@
     }
 
     function processSymbol(i) {
-      if (i >= 16) {
+      if (i >= NUM_SYMBOLS) {
         updateStatus("All reference symbols loaded. Ready to match!");
         document.getElementById('fileInput').disabled = false;
         document.getElementById('processBtn').disabled = false;
@@ -212,39 +213,51 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
       const svg = document.getElementById(`symbol${i}`);
+      if (!svg) {
+        updateStatus(`Symbol ${i} not found`, true);
+        processSymbol(i + 1);
+        return;
+      }
+      
       const svgData = new XMLSerializer().serializeToString(svg);
       const img = new Image();
       
       img.onload = function() {
         ctx.drawImage(img, 0, 0, 100, 100);
         
-        // Process with OpenCV
-        const src = cv.imread(canvas);
-        const gray = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        
-        const processed = new cv.Mat();
-        cv.threshold(gray, processed, 128, 255, cv.THRESH_BINARY_INV);
-        
-        const orb = new cv.ORB(MAX_FEATURES);
-        const keypoints = new cv.KeyPointVector();
-        const descriptors = new cv.Mat();
-        orb.detectAndCompute(processed, new cv.Mat(), keypoints, descriptors);
-        
-        referenceDescriptors[i] = descriptors;
-        referenceKeypoints[i] = keypoints;
-        
-        // Update the symbol display with the processed image
-        const symbolDiv = document.querySelector(`#referenceSymbols .symbol:nth-child(${i+1})`);
-        symbolDiv.prepend(canvas);
-        
-        src.delete();
-        gray.delete();
-        processed.delete();
-        
-        symbolsLoaded++;
-        updateStatus(`Loaded ${symbolsLoaded}/16 symbols...`);
-        processSymbol(i + 1);
+        try {
+          // Process with OpenCV
+          const src = cv.imread(canvas);
+          const gray = new cv.Mat();
+          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+          
+          const processed = new cv.Mat();
+          cv.threshold(gray, processed, 128, 255, cv.THRESH_BINARY_INV);
+          
+          const orb = new cv.ORB(MAX_FEATURES);
+          const keypoints = new cv.KeyPointVector();
+          const descriptors = new cv.Mat();
+          orb.detectAndCompute(processed, new cv.Mat(), keypoints, descriptors);
+          
+          referenceDescriptors[i] = descriptors;
+          referenceKeypoints[i] = keypoints;
+          
+          // Update the symbol display with the processed image
+          const symbolDiv = document.querySelector(`#referenceSymbols .symbol:nth-child(${i+1})`);
+          symbolDiv.prepend(canvas);
+          
+          src.delete();
+          gray.delete();
+          processed.delete();
+          
+          symbolsLoaded++;
+          updateStatus(`Loaded ${symbolsLoaded}/${NUM_SYMBOLS} symbols...`);
+          processSymbol(i + 1);
+        } catch (err) {
+          updateStatus(`Error processing symbol ${i}: ${err.message}`, true);
+          console.error(err);
+          processSymbol(i + 1);
+        }
       };
       
       img.onerror = function() {
@@ -292,7 +305,7 @@
           const matches = [];
           const bf = new cv.BFMatcher(cv.NORM_HAMMING, false);
           
-          for (let i = 0; i < 16; i++) {
+          for (let i = 0; i < NUM_SYMBOLS; i++) {
             if (!referenceDescriptors[i]) continue;
             
             const knnMatches = new cv.DMatchVectorVector();
@@ -398,7 +411,9 @@
         
         match.matches.forEach(m => {
           const kp = referenceKeypoints[match.symbolId].get(m.trainIdx);
-          cv.circle(output, kp.pt, 5, color, 2);
+          if (kp) {
+            cv.circle(output, kp.pt, 5, color, 2);
+          }
         });
       }
       
