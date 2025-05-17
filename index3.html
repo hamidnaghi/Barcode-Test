@@ -1,54 +1,160 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Symbol Detection</title>
+  <title>Symbol Detector</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    canvas, img { max-width: 100%; }
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      margin: 10px;
+    }
+    #results {
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
-  <h1>Symbol Detection (Offline with OpenCV.js)</h1>
-  <p>Upload a JPG image containing symbols:</p>
-  <input type="file" id="imageInput" accept=".jpg,.jpeg,.png" />
-  <p id="status">Loading OpenCV...</p>
-  <canvas id="canvas" style="display:none;"></canvas>
-  <script src="opencv.js" type="text/javascript"></script>
-  <script>
-    let cvReady = false;
 
-    function onOpenCvReady() {
-      document.getElementById('status').innerText = 'OpenCV.js loaded. Please upload an image.';
-      cvReady = true;
+<h1>Symbol Detection from JPEG</h1>
+
+<input type="file" id="imageLoader" accept="image/jpeg" />
+<canvas id="imageCanvas"></canvas>
+<canvas id="templateCanvas" width="100" height="100" style="display:none;"></canvas>
+
+<div id="results"></div>
+
+<script>
+const symbolSVGs = [
+  `M10,10 L90,10 L50,50 L90,90 L10,90 L50,50 Z`,
+  `M10,10 L45,10 L90,55 L90,90 L55,90 L10,45 Z`,
+  `M20,20 L80,20 L80,40 L40,40 L40,80 L20,80 Z`,
+  `M10,10 L50,30 L90,10 L90,50 L70,50 L70,90 L30,90 L30,50 L10,50 Z`,
+  `M10,10 L90,10 L90,30 L30,30 L30,70 L90,70 L90,90 L10,90 Z`,
+  `M20,20 L80,20 L80,40 L60,60 L80,80 L80,100 L20,100 L20,80 L40,60 L20,40 Z`,
+  `M80,50a30,30 0 1 1-60,0a30,30 0 0 1 60,0z;circle cx="65" cy="50" r="25" fill="white"`,
+  `M50,10 L90,60 L70,60 L70,90 L30,90 L30,60 L10,60 Z`,
+  `rect width="100" height="100"`,
+  `circle cx="50" cy="50" r="40"`,
+  `rect x="10" y="10" width="80" height="80";rect x="35" y="35" width="30" height="30" fill="white"`,
+  `line x1="10" y1="50" x2="90" y2="50" stroke-width="15";line x1="50" y1="10" x2="50" y2="90" stroke-width="15"`,
+  `circle cx="50" cy="50" r="40";circle cx="50" cy="50" r="20" fill="white"`,
+  `M50,50 L90,50 A40,40 0 1 1 50,10 Z`,
+  `M50,0 L0,50 L100,50 Z`,
+  `M50,0 L0,50 L100,50 Z;M100,50 L50,0 L50,100 Z`
+];
+
+function renderSVGPath(ctx, dString, width = 100, height = 100) {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  svg.setAttribute("viewBox", "0 0 100 100");
+  const commands = dString.split(';');
+  for (let cmd of commands) {
+    if (cmd.includes('path')) {
+      const path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", cmd.replace(/.*d="/, '').replace(/".*/, ''));
+      path.setAttribute("fill", "black");
+      svg.appendChild(path);
+    } else if (cmd.includes('circle')) {
+      const circle = document.createElementNS(svgNS, "circle");
+      cmd.trim().split(/\s+/).forEach(attr => {
+        const [k, v] = attr.split('=');
+        circle.setAttribute(k, v.replace(/"/g, ''));
+      });
+      circle.setAttribute("fill", circle.getAttribute("fill") || "black");
+      svg.appendChild(circle);
+    } else if (cmd.includes('rect')) {
+      const rect = document.createElementNS(svgNS, "rect");
+      cmd.trim().split(/\s+/).forEach(attr => {
+        const [k, v] = attr.split('=');
+        rect.setAttribute(k, v.replace(/"/g, ''));
+      });
+      rect.setAttribute("fill", rect.getAttribute("fill") || "black");
+      svg.appendChild(rect);
+    } else if (cmd.includes('line')) {
+      const line = document.createElementNS(svgNS, "line");
+      cmd.trim().split(/\s+/).forEach(attr => {
+        const [k, v] = attr.split('=');
+        line.setAttribute(k, v.replace(/"/g, ''));
+      });
+      line.setAttribute("stroke", "black");
+      svg.appendChild(line);
+    } else {
+      const path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", cmd.trim());
+      path.setAttribute("fill", "black");
+      svg.appendChild(path);
+    }
+  }
+  const img = new Image();
+  const svgBlob = new Blob([svg.outerHTML], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(svgBlob);
+  return new Promise((resolve) => {
+    img.onload = () => {
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(ctx.getImageData(0, 0, width, height));
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  });
+}
+
+function compareImages(img1, img2) {
+  let diff = 0;
+  for (let i = 0; i < img1.data.length; i += 4) {
+    const d = Math.abs(img1.data[i] - img2.data[i]);
+    diff += d;
+  }
+  return diff;
+}
+
+document.getElementById('imageLoader').addEventListener('change', async function (e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  const canvas = document.getElementById("imageCanvas");
+  const ctx = canvas.getContext("2d");
+  img.onload = async () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+
+    const templateCanvas = document.getElementById("templateCanvas");
+    const templateCtx = templateCanvas.getContext("2d");
+
+    // Render templates
+    const templates = await Promise.all(symbolSVGs.map(d => renderSVGPath(templateCtx, d)));
+
+    const boxSize = 100;
+    const cols = Math.floor(img.width / boxSize);
+    const rows = Math.floor(img.height / boxSize);
+    const results = [];
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = col * boxSize;
+        const y = row * boxSize;
+        const imgData = ctx.getImageData(x, y, boxSize, boxSize);
+
+        // Compare with all templates
+        const scores = templates.map(tmpl => compareImages(tmpl, imgData));
+        const minScore = Math.min(...scores);
+        const matchedId = scores.indexOf(minScore);
+        results.push(matchedId);
+      }
     }
 
-    document.getElementById('imageInput').addEventListener('change', (e) => {
-      if (!cvReady) {
-        alert('OpenCV is not ready yet!');
-        return;
-      }
-      const file = e.target.files[0];
-      const img = new Image();
-      img.onload = function () {
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
+    document.getElementById('results').innerText = "Detected symbol IDs (Top-Left to Bottom-Right):\n" + results.join(', ');
+  };
+  img.src = URL.createObjectURL(file);
+});
+</script>
 
-        const src = cv.imread(canvas);
-        const dst = new cv.Mat();
-        cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
-        cv.imshow('canvas', dst);
-        src.delete();
-        dst.delete();
-        document.getElementById('status').innerText = 'Image loaded. Symbol detection logic goes here.';
-      };
-      img.src = URL.createObjectURL(file);
-    });
-  </script>
 </body>
 </html>
