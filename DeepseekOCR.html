@@ -2,38 +2,51 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Symbol Matcher - Fixed Display</title>
+  <title>Symbol Matcher - Complete Working Version</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 800px;
+      max-width: 900px;
       margin: 0 auto;
       padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #2c3e50;
+      text-align: center;
+      margin-bottom: 20px;
     }
     #referenceSymbols {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-      margin-bottom: 20px;
+      gap: 15px;
+      margin: 25px 0;
     }
     .symbol {
-      text-align: center;
-      padding: 10px;
+      background: #f8f9fa;
       border: 1px solid #ddd;
-      min-height: 120px;
+      border-radius: 5px;
+      padding: 15px;
+      text-align: center;
+      min-height: 150px;
     }
-    .symbol canvas, .symbol svg {
-      max-width: 100%;
+    .symbol svg {
+      width: 80px;
       height: 80px;
       display: block;
-      margin: 0 auto;
+      margin: 0 auto 10px;
     }
-
-
-    #status {
-      padding: 10px;
+    canvas {
+      max-width: 100%;
+      border: 1px solid #eee;
       margin: 10px 0;
+    }
+    #status {
+      padding: 12px;
+      margin: 15px 0;
       background: #e3f2fd;
+      border-radius: 4px;
+      border-left: 4px solid #2196F3;
     }
     button {
       padding: 10px 20px;
@@ -42,33 +55,40 @@
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      margin-right: 10px;
+      font-size: 16px;
+      margin: 5px 5px 5px 0;
     }
     button:disabled {
-      opacity: 0.5;
+      background: #cccccc;
+      cursor: not-allowed;
+    }
+    #fileInput {
+      margin: 10px 0;
     }
     #results {
-      margin-top: 20px;
+      margin-top: 25px;
+      background: #f8f9fa;
       padding: 20px;
-      background: #f5f5f5;
       border-radius: 5px;
+      border: 1px solid #eee;
     }
     .match {
       display: flex;
       align-items: center;
       margin-bottom: 15px;
-      padding: 10px;
+      padding: 15px;
       background: white;
-      border-radius: 4px;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .match svg {
-      width: 50px;
-      height: 50px;
-      margin-right: 15px;
+      width: 60px;
+      height: 60px;
+      margin-right: 20px;
     }
     .processing {
       text-align: center;
-      padding: 20px;
+      padding: 30px;
     }
     .spinner {
       border: 5px solid #f3f3f3;
@@ -83,10 +103,16 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    .error {
+      color: #d32f2f;
+      padding: 15px;
+      background: #ffebee;
+      border-radius: 5px;
+    }
   </style>
 </head>
 <body>
-  <h1>Symbol Matcher Ver2</h1>
+  <h1>Symbol Matcher Ver3 </h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
@@ -94,7 +120,7 @@
   
   <input type="file" id="fileInput" accept="image/*" disabled>
   <button id="processBtn" disabled>Match Symbols</button>
-  <button id="testBtn">Test with Black Square</button>
+  <button id="testBtn" disabled>Test with Black Square</button>
   
   <div>
     <canvas id="inputCanvas"></canvas>
@@ -105,13 +131,81 @@
 
   <!-- Reference SVGs -->
   <div id="svgTemplates" style="display: none;">
-    <!-- [Keep all your SVG definitions from earlier] -->
+    <!-- ID: 0 -->
+    <svg id="symbol0" viewBox="0 0 100 100">
+      <path d="M10,10 L90,10 L50,50 L90,90 L10,90 L50,50 Z" fill="black"/>
+    </svg>
+    <!-- ID: 1 -->
+    <svg id="symbol1" viewBox="0 0 100 100">
+      <polygon points="10,10 45,10 90,55 90,90 55,90 10,45" fill="black"/>
+    </svg>
+    <!-- ID: 2 -->
+    <svg id="symbol2" viewBox="0 0 100 100">
+      <path d="M20,20 L80,20 L80,40 L40,40 L40,80 L20,80 Z" fill="black"/>
+    </svg>
+    <!-- ID: 3 -->
+    <svg id="symbol3" viewBox="0 0 100 100">
+      <path d="M10,10 L50,30 L90,10 L90,50 L70,50 L70,90 L30,90 L30,50 L10,50 Z" fill="black"/>
+    </svg>
+    <!-- ID: 4 -->
+    <svg id="symbol4" viewBox="0 0 100 100">
+      <path d="M10,10 L90,10 L90,30 L30,30 L30,70 L90,70 L90,90 L10,90 Z" fill="black"/>
+    </svg>
+    <!-- ID: 5 -->
+    <svg id="symbol5" viewBox="0 0 100 100">
+      <polygon points="20,20 80,20 80,40 60,60 80,80 80,100 20,100 20,80 40,60 20,40" fill="black"/>
+    </svg>
+    <!-- ID: 6 -->
+    <svg id="symbol6" viewBox="0 0 100 100">
+      <path d="M80,50a30,30 0 1 1-60,0a30,30 0 0 1 60,0z" fill="black"/>
+      <circle cx="65" cy="50" r="25" fill="white"/>
+    </svg>
+    <!-- ID: 7 -->
+    <svg id="symbol7" viewBox="0 0 100 100">
+      <polygon points="50,10 90,60 70,60 70,90 30,90 30,60 10,60" fill="black"/>
+    </svg>
+    <!-- ID: 8 -->
+    <svg id="symbol8" viewBox="0 0 100 100">
+      <rect width="100" height="100" fill="black"/>
+    </svg>
+    <!-- ID: 9 -->
+    <svg id="symbol9" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="40" fill="black"/>
+    </svg>
+    <!-- ID: 10 -->
+    <svg id="symbol10" viewBox="0 0 100 100">
+      <rect x="10" y="10" width="80" height="80" fill="black"/>
+      <rect x="35" y="35" width="30" height="30" fill="white"/>
+    </svg>
+    <!-- ID: 11 -->
+    <svg id="symbol11" viewBox="0 0 100 100">
+      <line x1="10" y1="50" x2="90" y2="50" stroke="black" stroke-width="15"/>
+      <line x1="50" y1="10" x2="50" y2="90" stroke="black" stroke-width="15"/>
+    </svg>
+    <!-- ID: 12 -->
+    <svg id="symbol12" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="40" fill="black"/>
+      <circle cx="50" cy="50" r="20" fill="white"/>
+    </svg>
+    <!-- ID: 13 -->
+    <svg id="symbol13" viewBox="0 0 100 100">
+      <path d="M50,50 L90,50 A40,40 0 1 1 50,10 Z" fill="black"/>
+    </svg>
+    <!-- ID: 14 -->
+    <svg id="symbol14" viewBox="0 0 100 100">
+      <polygon points="50,0 0,50 100,50" fill="black"/>
+    </svg>
+    <!-- ID: 15 -->
+    <svg id="symbol15" viewBox="0 0 100 100">
+      <polygon points="50,0 0,50 100,50" fill="black"/>
+      <polygon points="100,50 50,0 50,100" fill="black"/>
+    </svg>
   </div>
 
   <script>
     // Configuration
     const NUM_SYMBOLS = 16;
-    const MATCH_THRESHOLD = 0.85; // Similarity threshold
+    const MATCH_THRESHOLD = 0.85; // Similarity threshold (0-1)
     
     // State
     let referenceTemplates = [];
@@ -132,13 +226,7 @@
       };
     }
 
-
-
-
-
-
-
- function loadReferenceSymbols() {
+    function loadReferenceSymbols() {
       const container = document.getElementById('referenceSymbols');
       container.innerHTML = '';
       
@@ -148,38 +236,17 @@
         div.innerHTML = `<div>ID: ${i}</div>`;
         container.appendChild(div);
         
-        // Create both canvas and SVG elements
-        const svgContainer = document.createElement('div');
         const svg = document.getElementById(`symbol${i}`);
         if (svg) {
-          const clone = svg.cloneNode(true);
-          clone.style.display = 'block';
-          svgContainer.appendChild(clone);
-        }
-        
-        div.prepend(svgContainer);
-        
-        // Still create template for matching
-        const canvas = document.createElement('canvas');
-        canvas.width = canvas.height = 100;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        if (svg) {
-          const svgData = new XMLSerializer().serializeToString(svg);
-          const img = new Image();
+          // Clone and display the SVG directly
+          const svgClone = svg.cloneNode(true);
+          svgClone.style.display = 'block';
+          div.prepend(svgClone);
           
-          img.onload = function() {
-            ctx.drawImage(img, 0, 0, 100, 100);
-            const src = cv.imread(canvas);
-            const gray = new cv.Mat();
-            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-            referenceTemplates[i] = gray;
-            src.delete();
-          };
-          
-          img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+          // Create template for matching
+          createTemplate(svg, i);
+        } else {
+          console.error(`Symbol ${i} not found`);
         }
       }
       
@@ -189,24 +256,49 @@
       document.getElementById('testBtn').disabled = false;
     }
 
+    function createTemplate(svg, index) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 100;
+      const ctx = canvas.getContext('2d');
+      
+      // White background
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Convert SVG to image
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const img = new Image();
+      
+      img.onload = function() {
+        // Draw SVG to canvas
+        ctx.drawImage(img, 0, 0, 100, 100);
+        
+        // Create OpenCV template
+        const src = cv.imread(canvas);
+        const gray = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        referenceTemplates[index] = gray;
+        
+        // Cleanup
+        src.delete();
+      };
+      
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    }
 
-
-
-
-
-    
     function matchSymbols() {
       if (!cvReady) {
         updateStatus("OpenCV not ready yet", true);
         return;
       }
       
-      const canvas = document.getElementById('inputCanvas');
-      if (!canvas || canvas.width === 0) {
+      const inputCanvas = document.getElementById('inputCanvas');
+      if (!inputCanvas || inputCanvas.width === 0) {
         updateStatus("Please load an image first", true);
         return;
       }
       
+      // Show processing indicator
       document.getElementById('results').innerHTML = `
         <div class="processing">
           <div class="spinner"></div>
@@ -228,7 +320,7 @@
           // Show processed image
           cv.imshow('debugCanvas', resized);
           
-          // Match against templates
+          // Match against all templates
           const matches = [];
           for (let i = 0; i < NUM_SYMBOLS; i++) {
             if (!referenceTemplates[i]) continue;
@@ -258,44 +350,7 @@
           }
           
           // Display results
-          if (matches.length > 0) {
-            matches.sort((a, b) => b.confidence - a.confidence);
-            let resultsHTML = '<h3>Matched Symbols:</h3>';
-            
-            matches.slice(0, 3).forEach(match => {
-              const svg = document.getElementById(`symbol${match.symbolId}`).cloneNode(true);
-              svg.style.width = '50px';
-              svg.style.height = '50px';
-              
-              resultsHTML += `
-                <div class="match">
-                  ${svg.outerHTML}
-                  <div>
-                    <strong>Symbol ID:</strong> ${match.symbolId}<br>
-                    <strong>Confidence:</strong> ${match.confidence}%<br>
-                    <strong>Different Pixels:</strong> ${match.diff}
-                  </div>
-                </div>
-              `;
-            });
-            
-            document.getElementById('results').innerHTML = resultsHTML;
-            updateStatus(`Found ${matches.length} matches! Best match: ID ${matches[0].symbolId} (${matches[0].confidence}%)`);
-          } else {
-            document.getElementById('results').innerHTML = `
-              <div style="padding: 20px; background: #ffebee; border-radius: 5px;">
-                <h3>No Matches Found</h3>
-                <p>No symbols matched with sufficient confidence.</p>
-                <p>Try:</p>
-                <ul>
-                  <li>Clearer images with better contrast</li>
-                  <li>Larger symbols in the image</li>
-                  <li>Adjusting the camera angle</li>
-                </ul>
-              </div>
-            `;
-            updateStatus("No matches found", true);
-          }
+          displayResults(matches);
           
           // Cleanup
           src.delete();
@@ -304,7 +359,7 @@
         } catch (err) {
           console.error("Matching error:", err);
           document.getElementById('results').innerHTML = `
-            <div style="padding: 20px; background: #ffebee; border-radius: 5px; color: #d32f2f;">
+            <div class="error">
               <h3>Error Processing Image</h3>
               <p>${err.message}</p>
               <p>Check console for details</p>
@@ -313,6 +368,47 @@
           updateStatus("Error during processing", true);
         }
       }, 100);
+    }
+
+    function displayResults(matches) {
+      if (matches.length > 0) {
+        matches.sort((a, b) => b.confidence - a.confidence);
+        let resultsHTML = '<h3>Matched Symbols:</h3>';
+        
+        matches.slice(0, 3).forEach(match => {
+          const svg = document.getElementById(`symbol${match.symbolId}`).cloneNode(true);
+          svg.style.width = '60px';
+          svg.style.height = '60px';
+          
+          resultsHTML += `
+            <div class="match">
+              ${svg.outerHTML}
+              <div>
+                <p><strong>Symbol ID:</strong> ${match.symbolId}</p>
+                <p><strong>Confidence:</strong> ${match.confidence}%</p>
+                <p><strong>Different Pixels:</strong> ${match.diff}</p>
+              </div>
+            </div>
+          `;
+        });
+        
+        document.getElementById('results').innerHTML = resultsHTML;
+        updateStatus(`Found ${matches.length} matches! Best match: ID ${matches[0].symbolId} (${matches[0].confidence}%)`);
+      } else {
+        document.getElementById('results').innerHTML = `
+          <div class="error">
+            <h3>No Matches Found</h3>
+            <p>No symbols matched with sufficient confidence.</p>
+            <p>Try:</p>
+            <ul>
+              <li>Clearer images with better contrast</li>
+              <li>Larger symbols in the image</li>
+              <li>Adjusting the camera angle</li>
+            </ul>
+          </div>
+        `;
+        updateStatus("No matches found", true);
+      }
     }
 
     function testWithBlackSquare() {
@@ -325,9 +421,9 @@
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Draw black square
+      // Draw black square (should match symbol 8)
       ctx.fillStyle = 'black';
-      ctx.fillRect(50, 50, 100, 100); // Centered 100x100 square
+      ctx.fillRect(50, 50, 100, 100);
       
       updateStatus("Black square test image loaded");
       document.getElementById('results').innerHTML = "Click 'Match Symbols' to test";
