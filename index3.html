@@ -1,112 +1,139 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Symbol Detection</title>
-  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="cv['onRuntimeInitialized']=onOpenCvReady;"></script>
+  <meta charset="utf-8">
+  <title>Robust Symbol Detection</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    canvas { border: 1px solid #ccc; margin: 10px; }
-    #output { margin-top: 20px; }
+    body { font-family: Arial; text-align: center; padding: 20px; }
+    canvas { margin: 10px; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
-  <h1>Symbol Detection (Template Matching)</h1>
-  <input type="file" accept="image/jpeg" id="upload" />
-  <div id="status">Loading OpenCV...</div>
-  <canvas id="inputCanvas"></canvas>
-  <div id="output"></div>
-
+  <h2>Robust Symbol Detection (Rotation, Scale, Noise)</h2>
+  <input type="file" id="upload" accept="image/jpeg">
+  <p id="status">Loading OpenCV...</p>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <script src="https://docs.opencv.org/4.x/opencv.js"></script>
   <script>
-    const svgDefs = [
-      `<svg viewBox="0 0 100 100"><path d="M10,10 L90,10 L50,50 L90,90 L10,90 L50,50 Z"/></svg>`,
-      `<svg viewBox="0 0 100 100"><polygon points="10,10 45,10 90,55 90,90 55,90 10,45"/></svg>`,
-      `<svg viewBox="0 0 100 100"><path d="M20,20 L80,20 L80,40 L40,40 L40,80 L20,80 Z"/></svg>`,
-      `<svg viewBox="0 0 100 100"><path d="M10,10 L50,30 L90,10 L90,50 L70,50 L70,90 L30,90 L30,50 L10,50 Z"/></svg>`,
-      `<svg viewBox="0 0 100 100"><path d="M10,10 L90,10 L90,30 L30,30 L30,70 L90,70 L90,90 L10,90 Z"/></svg>`,
-      `<svg viewBox="0 0 100 100"><polygon points="20,20 80,20 80,40 60,60 80,80 80,100 20,100 20,80 40,60 20,40"/></svg>`,
-      `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="30" fill="black"/><circle cx="65" cy="50" r="25" fill="white"/></svg>`,
-      `<svg viewBox="0 0 100 100"><polygon points="50,10 90,60 70,60 70,90 30,90 30,60 10,60" fill="black"/></svg>`,
-      `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="black"/></svg>`,
-      `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="black"/></svg>`,
-      `<svg viewBox="0 0 100 100"><rect x="10" y="10" width="80" height="80" fill="black"/><rect x="35" y="35" width="30" height="30" fill="white"/></svg>`,
-      `<svg viewBox="0 0 100 100"><line x1="10" y1="50" x2="90" y2="50" stroke="black" stroke-width="15"/><line x1="50" y1="10" x2="50" y2="90" stroke="black" stroke-width="15"/></svg>`,
-      `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="black"/><circle cx="50" cy="50" r="20" fill="white"/></svg>`,
-      `<svg viewBox="0 0 100 100"><path d="M50,50 L90,50 A40,40 0 1 1 50,10 Z" fill="black"/></svg>`,
-      `<svg viewBox="0 0 100 100"><polygon points="50,0 0,50 100,50" fill="black"/></svg>`,
-      `<svg viewBox="0 0 100 100"><polygon points="50,0 0,50 100,50" fill="black"/><polygon points="100,50 50,0 50,100" fill="black"/></svg>`
+    const templateSvgs = [
+      // Sample SVG shapes (add your real ones here)
+      `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+        <circle cx="50" cy="50" r="30" stroke="black" stroke-width="3" fill="none"/>
+      </svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+        <rect x="20" y="20" width="60" height="60" stroke="black" stroke-width="3" fill="none"/>
+      </svg>`
     ];
 
-    const templates = [];
+    let templates = [];
 
-    function svgToMat(svg) {
-      return new Promise((resolve) => {
+    async function loadTemplates() {
+      for (let i = 0; i < templateSvgs.length; i++) {
+        const canvas = await svgToCanvas(templateSvgs[i]);
+        const mat = cv.imread(canvas);
+        cv.cvtColor(mat, mat, cv.COLOR_RGBA2GRAY);
+        templates.push(mat);
+        // Optional debug: show template canvas
+        // document.body.appendChild(canvas);
+      }
+    }
+
+    function svgToCanvas(svgStr) {
+      return new Promise((resolve, reject) => {
         const img = new Image();
-        const blob = new Blob([svg], { type: 'image/svg+xml' });
-        const url = URL.createObjectURL(blob);
+        const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          canvas.width = 100;
-          canvas.height = 100;
+          canvas.width = img.width;
+          canvas.height = img.height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
-          const mat = cv.imread(canvas);
-          cv.cvtColor(mat, mat, cv.COLOR_RGBA2GRAY);
-          resolve(mat);
+          URL.revokeObjectURL(url);
+          resolve(canvas);
         };
+        img.onerror = reject;
         img.src = url;
       });
     }
 
-    async function loadTemplates() {
-      for (let svg of svgDefs) {
-        const mat = await svgToMat(svg);
-        templates.push(mat);
-      }
+    function detectSymbol(templateMat, inputMat) {
+      const orb = new cv.ORB.create();
+      let kp1 = new cv.KeyPointVector();
+      let des1 = new cv.Mat();
+      orb.detectAndCompute(templateMat, new cv.Mat(), kp1, des1);
+
+      let kp2 = new cv.KeyPointVector();
+      let des2 = new cv.Mat();
+      orb.detectAndCompute(inputMat, new cv.Mat(), kp2, des2);
+
+      if (des1.rows === 0 || des2.rows === 0) return { matches: [], kp1, kp2 };
+
+      const bf = new cv.BFMatcher(cv.NORM_HAMMING, true);
+      const matches = new cv.DMatchVector();
+      bf.match(des1, des2, matches);
+
+      return { matches, kp1, kp2 };
     }
 
-    function detectSymbols(inputMat) {
-      const gray = new cv.Mat();
-      cv.cvtColor(inputMat, gray, cv.COLOR_RGBA2GRAY);
+    function processImage(file) {
+      const reader = new FileReader();
+      reader.onload = function () {
+        const img = new Image();
+        img.onload = function () {
+          const canvas = document.getElementById("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0);
+          canvas.style.display = "block";
 
-      const output = document.getElementById('output');
-      output.innerHTML = `<h3>Matches:</h3>`;
+          let src = cv.imread(canvas);
+          cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
 
-      templates.forEach((tpl, i) => {
-        const result = new cv.Mat();
-        const mask = new cv.Mat();
-        cv.matchTemplate(gray, tpl, result, cv.TM_CCOEFF_NORMED, mask);
-        const minMax = cv.minMaxLoc(result, mask);
-        if (minMax.maxVal > 0.75) {
-          output.innerHTML += `Matched Template #${i} with score ${minMax.maxVal.toFixed(2)}<br>`;
-        }
-        result.delete(); mask.delete();
-      });
+          const results = [];
+          for (let i = 0; i < templates.length; i++) {
+            let { matches } = detectSymbol(templates[i], src);
+            results.push({ index: i, count: matches.size() });
+          }
 
-      gray.delete();
+          results.sort((a, b) => b.count - a.count);
+          const detectedOrder = results.map(r => r.index);
+          document.getElementById("status").innerText = "Detected Order: " + detectedOrder.join(", ");
+
+          src.delete();
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
     }
 
     function onOpenCvReady() {
-      document.getElementById('status').innerText = "OpenCV loaded. Loading templates...";
+      document.getElementById("status").innerText = "OpenCV ready. Loading templates...";
       loadTemplates().then(() => {
-        document.getElementById('status').innerText = "Templates loaded. Upload an image.";
-        document.getElementById('upload').addEventListener('change', e => {
-          const file = e.target.files[0];
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.getElementById('inputCanvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            const src = cv.imread(canvas);
-            detectSymbols(src);
-            src.delete();
-          };
-          img.src = URL.createObjectURL(file);
-        });
+        document.getElementById("status").innerText = "Templates loaded. Upload a JPEG image.";
+      }).catch(err => {
+        document.getElementById("status").innerText = "Template loading error: " + err;
+        console.error(err);
+      });
+
+      document.getElementById("upload").addEventListener("change", e => {
+        if (e.target.files.length > 0) {
+          document.getElementById("status").innerText = "Processing image...";
+          processImage(e.target.files[0]);
+        }
       });
     }
+
+    // Fallback OpenCV init check if cv.onRuntimeInitialized fails
+    document.addEventListener("DOMContentLoaded", () => {
+      const wait = setInterval(() => {
+        if (cv && cv.Mat && cv.ORB) {
+          clearInterval(wait);
+          onOpenCvReady();
+        }
+      }, 100);
+    });
   </script>
 </body>
 </html>
