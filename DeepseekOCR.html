@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Symbol Matcher - Ver1 </title>
+  <title>Symbol Matcher - Fixed Display</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -20,12 +20,16 @@
       text-align: center;
       padding: 10px;
       border: 1px solid #ddd;
+      min-height: 120px;
     }
-    canvas {
+    .symbol canvas, .symbol svg {
       max-width: 100%;
-      border: 1px solid #ccc;
-      margin: 10px 0;
+      height: 80px;
+      display: block;
+      margin: 0 auto;
     }
+
+
     #status {
       padding: 10px;
       margin: 10px 0;
@@ -82,7 +86,7 @@
   </style>
 </head>
 <body>
-  <h1>Symbol Matcher</h1>
+  <h1>Symbol Matcher Ver2</h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
@@ -128,7 +132,13 @@
       };
     }
 
-    function loadReferenceSymbols() {
+
+
+
+
+
+
+ function loadReferenceSymbols() {
       const container = document.getElementById('referenceSymbols');
       container.innerHTML = '';
       
@@ -138,38 +148,39 @@
         div.innerHTML = `<div>ID: ${i}</div>`;
         container.appendChild(div);
         
+        // Create both canvas and SVG elements
+        const svgContainer = document.createElement('div');
+        const svg = document.getElementById(`symbol${i}`);
+        if (svg) {
+          const clone = svg.cloneNode(true);
+          clone.style.display = 'block';
+          svgContainer.appendChild(clone);
+        }
+        
+        div.prepend(svgContainer);
+        
+        // Still create template for matching
         const canvas = document.createElement('canvas');
         canvas.width = canvas.height = 100;
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        const svg = document.getElementById(`symbol${i}`);
-        if (!svg) {
-          console.error(`Symbol ${i} not found`);
-          continue;
+        if (svg) {
+          const svgData = new XMLSerializer().serializeToString(svg);
+          const img = new Image();
+          
+          img.onload = function() {
+            ctx.drawImage(img, 0, 0, 100, 100);
+            const src = cv.imread(canvas);
+            const gray = new cv.Mat();
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+            referenceTemplates[i] = gray;
+            src.delete();
+          };
+          
+          img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
         }
-        
-        const svgData = new XMLSerializer().serializeToString(svg);
-        const img = new Image();
-        
-        img.onload = function() {
-          ctx.drawImage(img, 0, 0, 100, 100);
-          
-          // Create template
-          const src = cv.imread(canvas);
-          const gray = new cv.Mat();
-          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-          referenceTemplates[i] = gray;
-          
-          // Show in reference panel
-          div.prepend(canvas);
-          
-          // Cleanup
-          src.delete();
-        };
-        
-        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
       }
       
       updateStatus("Ready to match symbols!");
@@ -178,6 +189,12 @@
       document.getElementById('testBtn').disabled = false;
     }
 
+
+
+
+
+
+    
     function matchSymbols() {
       if (!cvReady) {
         updateStatus("OpenCV not ready yet", true);
