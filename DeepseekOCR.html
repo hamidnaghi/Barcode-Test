@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Symbol Matcher - Fixed Version</title>
+  <title>Symbol Matcher - Complete Working Version</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -109,38 +109,18 @@
       background: #ffebee;
       border-radius: 5px;
     }
-    .controls {
-      margin: 15px 0;
-    }
-    .slider-container {
-      margin: 10px 0;
-    }
-    .slider-container label {
-      display: inline-block;
-      width: 200px;
-    }
   </style>
 </head>
 <body>
-  <h1>Fixed Symbol Matcher Ver7</h1>
+  <h1>Symbol Matcher Ver8 </h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
   <div id="referenceSymbols"></div>
   
   <input type="file" id="fileInput" accept="image/*" disabled>
-  
-  <div class="controls">
-    <button id="processBtn" disabled>Match Symbols</button>
-    <button id="testBtn" disabled>Test with Black Square</button>
-    <button id="rotateBtn" disabled>Rotate Image</button>
-  </div>
-  
-  <div class="slider-container">
-    <label for="thresholdSlider">Match Threshold:</label>
-    <input type="range" id="thresholdSlider" min="50" max="100" value="85">
-    <span id="thresholdValue">85%</span>
-  </div>
+  <button id="processBtn" disabled>Match Symbols</button>
+  <button id="testBtn" disabled>Test with Black Square</button>
   
   <div>
     <canvas id="inputCanvas"></canvas>
@@ -151,19 +131,85 @@
 
   <!-- Reference SVGs -->
   <div id="svgTemplates" style="display: none;">
-    <!-- ID: 0-15 (same as before) -->
+    <!-- ID: 0 -->
+    <svg id="symbol0" viewBox="0 0 100 100">
+      <path d="M10,10 L90,10 L50,50 L90,90 L10,90 L50,50 Z" fill="black"/>
+    </svg>
+    <!-- ID: 1 -->
+    <svg id="symbol1" viewBox="0 0 100 100">
+      <polygon points="10,10 45,10 90,55 90,90 55,90 10,45" fill="black"/>
+    </svg>
+    <!-- ID: 2 -->
+    <svg id="symbol2" viewBox="0 0 100 100">
+      <path d="M20,20 L80,20 L80,40 L40,40 L40,80 L20,80 Z" fill="black"/>
+    </svg>
+    <!-- ID: 3 -->
+    <svg id="symbol3" viewBox="0 0 100 100">
+      <path d="M10,10 L50,30 L90,10 L90,50 L70,50 L70,90 L30,90 L30,50 L10,50 Z" fill="black"/>
+    </svg>
+    <!-- ID: 4 -->
+    <svg id="symbol4" viewBox="0 0 100 100">
+      <path d="M10,10 L90,10 L90,30 L30,30 L30,70 L90,70 L90,90 L10,90 Z" fill="black"/>
+    </svg>
+    <!-- ID: 5 -->
+    <svg id="symbol5" viewBox="0 0 100 100">
+      <polygon points="20,20 80,20 80,40 60,60 80,80 80,100 20,100 20,80 40,60 20,40" fill="black"/>
+    </svg>
+    <!-- ID: 6 -->
+    <svg id="symbol6" viewBox="0 0 100 100">
+      <path d="M80,50a30,30 0 1 1-60,0a30,30 0 0 1 60,0z" fill="black"/>
+      <circle cx="65" cy="50" r="25" fill="white"/>
+    </svg>
+    <!-- ID: 7 -->
+    <svg id="symbol7" viewBox="0 0 100 100">
+      <polygon points="50,10 90,60 70,60 70,90 30,90 30,60 10,60" fill="black"/>
+    </svg>
+    <!-- ID: 8 -->
+    <svg id="symbol8" viewBox="0 0 100 100">
+      <rect width="100" height="100" fill="black"/>
+    </svg>
+    <!-- ID: 9 -->
+    <svg id="symbol9" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="40" fill="black"/>
+    </svg>
+    <!-- ID: 10 -->
+    <svg id="symbol10" viewBox="0 0 100 100">
+      <rect x="10" y="10" width="80" height="80" fill="black"/>
+      <rect x="35" y="35" width="30" height="30" fill="white"/>
+    </svg>
+    <!-- ID: 11 -->
+    <svg id="symbol11" viewBox="0 0 100 100">
+      <line x1="10" y1="50" x2="90" y2="50" stroke="black" stroke-width="15"/>
+      <line x1="50" y1="10" x2="50" y2="90" stroke="black" stroke-width="15"/>
+    </svg>
+    <!-- ID: 12 -->
+    <svg id="symbol12" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="40" fill="black"/>
+      <circle cx="50" cy="50" r="20" fill="white"/>
+    </svg>
+    <!-- ID: 13 -->
+    <svg id="symbol13" viewBox="0 0 100 100">
+      <path d="M50,50 L90,50 A40,40 0 1 1 50,10 Z" fill="black"/>
+    </svg>
+    <!-- ID: 14 -->
+    <svg id="symbol14" viewBox="0 0 100 100">
+      <polygon points="50,0 0,50 100,50" fill="black"/>
+    </svg>
+    <!-- ID: 15 -->
+    <svg id="symbol15" viewBox="0 0 100 100">
+      <polygon points="50,0 0,50 100,50" fill="black"/>
+      <polygon points="100,50 50,0 50,100" fill="black"/>
+    </svg>
   </div>
 
   <script>
     // Configuration
     const NUM_SYMBOLS = 16;
-    let MATCH_THRESHOLD = 0.85;
-    let currentRotation = 0;
+    const MATCH_THRESHOLD = 0.85; // Similarity threshold (0-1)
     
     // State
     let referenceTemplates = [];
     let cvReady = false;
-    let originalImageData = null;
     
     // Load OpenCV.js
     const script = document.createElement('script');
@@ -188,29 +234,28 @@
         const div = document.createElement('div');
         div.className = 'symbol';
         div.innerHTML = `<div>ID: ${i}</div>`;
-        container.appendChild(div);
         
-        const svg = document.getElementById(`symbol${i}`);
-        if (svg) {
-          const svgClone = svg.cloneNode(true);
+        // Get the SVG from the hidden templates
+        const svgTemplate = document.getElementById(`symbol${i}`);
+        if (svgTemplate) {
+          // Clone the SVG and add it to the symbol div
+          const svgClone = svgTemplate.cloneNode(true);
           svgClone.style.display = 'block';
-          div.prepend(svgClone);
-          createTemplate(svg, i);
+          div.insertBefore(svgClone, div.firstChild);
+          
+          // Create template for matching
+          createTemplate(svgTemplate, i);
         } else {
           console.error(`Symbol ${i} not found`);
         }
+        
+        container.appendChild(div);
       }
       
       updateStatus("Ready to match symbols!");
       document.getElementById('fileInput').disabled = false;
       document.getElementById('processBtn').disabled = false;
       document.getElementById('testBtn').disabled = false;
-      document.getElementById('rotateBtn').disabled = false;
-      
-      document.getElementById('thresholdSlider').addEventListener('input', function() {
-        MATCH_THRESHOLD = this.value / 100;
-        document.getElementById('thresholdValue').textContent = `${this.value}%`;
-      });
     }
 
     function createTemplate(svg, index) {
@@ -218,32 +263,26 @@
       canvas.width = canvas.height = 100;
       const ctx = canvas.getContext('2d');
       
+      // White background
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
+      // Convert SVG to image
       const svgData = new XMLSerializer().serializeToString(svg);
       const img = new Image();
       
       img.onload = function() {
+        // Draw SVG to canvas
         ctx.drawImage(img, 0, 0, 100, 100);
         
+        // Create OpenCV template
         const src = cv.imread(canvas);
         const gray = new cv.Mat();
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        referenceTemplates[index] = gray;
         
-        const thresholded = new cv.Mat();
-        cv.threshold(gray, thresholded, 200, 255, cv.THRESH_BINARY);
-        
-        if (index === 8) {
-          const perfectSquare = new cv.Mat.zeros(100, 100, cv.CV_8UC1);
-          cv.rectangle(perfectSquare, new cv.Point(0, 0), new cv.Point(99, 99), new cv.Scalar(255), -1);
-          referenceTemplates[index] = perfectSquare;
-        } else {
-          referenceTemplates[index] = thresholded;
-        }
-        
+        // Cleanup
         src.delete();
-        gray.delete();
       };
       
       img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
@@ -261,6 +300,7 @@
         return;
       }
       
+      // Show processing indicator
       document.getElementById('results').innerHTML = `
         <div class="processing">
           <div class="spinner"></div>
@@ -270,29 +310,33 @@
       
       setTimeout(() => {
         try {
+          // Process input image
           const src = cv.imread('inputCanvas');
           const gray = new cv.Mat();
           cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
           
-          const thresholded = new cv.Mat();
-          cv.threshold(gray, thresholded, 200, 255, cv.THRESH_BINARY);
-          
+          // Resize to match template size
           const resized = new cv.Mat();
-          cv.resize(thresholded, resized, new cv.Size(100, 100));
+          cv.resize(gray, resized, new cv.Size(100, 100));
           
+          // Show processed image
           cv.imshow('debugCanvas', resized);
           
+          // Match against all templates
           const matches = [];
           for (let i = 0; i < NUM_SYMBOLS; i++) {
             if (!referenceTemplates[i]) continue;
             
+            // Calculate absolute difference
             const diff = new cv.Mat();
             cv.absdiff(resized, referenceTemplates[i], diff);
             
-            const diffThresholded = new cv.Mat();
-            cv.threshold(diff, diffThresholded, 30, 255, cv.THRESH_BINARY);
+            // Convert to binary (black/white)
+            const thresholded = new cv.Mat();
+            cv.threshold(diff, thresholded, 30, 255, cv.THRESH_BINARY);
             
-            const differentPixels = cv.countNonZero(diffThresholded);
+            // Count different pixels
+            const differentPixels = cv.countNonZero(thresholded);
             const similarity = 1 - (differentPixels / (100 * 100));
             
             if (similarity >= MATCH_THRESHOLD) {
@@ -304,16 +348,16 @@
             }
             
             diff.delete();
-            diffThresholded.delete();
+            thresholded.delete();
           }
           
-          // Clean up Mats we created
+          // Display results
+          displayResults(matches);
+          
+          // Cleanup
           src.delete();
           gray.delete();
-          thresholded.delete();
           resized.delete();
-          
-          displayResults(matches);
         } catch (err) {
           console.error("Matching error:", err);
           document.getElementById('results').innerHTML = `
@@ -359,10 +403,9 @@
             <p>No symbols matched with sufficient confidence.</p>
             <p>Try:</p>
             <ul>
-              <li>Lowering the match threshold</li>
-              <li>Rotating the image (use the Rotate button)</li>
               <li>Clearer images with better contrast</li>
               <li>Larger symbols in the image</li>
+              <li>Adjusting the camera angle</li>
             </ul>
           </div>
         `;
@@ -376,57 +419,16 @@
       canvas.width = 200;
       canvas.height = 200;
       
+      // Clear canvas
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
+      // Draw black square (should match symbol 8)
       ctx.fillStyle = 'black';
       ctx.fillRect(50, 50, 100, 100);
       
-      originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      currentRotation = 0;
-      
       updateStatus("Black square test image loaded");
       document.getElementById('results').innerHTML = "Click 'Match Symbols' to test";
-    }
-
-    function rotateImage() {
-      const canvas = document.getElementById('inputCanvas');
-      if (!canvas || canvas.width === 0) {
-        updateStatus("Please load an image first", true);
-        return;
-      }
-      
-      const ctx = canvas.getContext('2d');
-      
-      if (!originalImageData) {
-        originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        currentRotation = 0;
-      }
-      
-      currentRotation = (currentRotation + 90) % 360;
-      
-      const tempCanvas = document.createElement('canvas');
-      const tempCtx = tempCanvas.getContext('2d');
-      
-      if (currentRotation % 180 === 90) {
-        tempCanvas.width = canvas.height;
-        tempCanvas.height = canvas.width;
-      } else {
-        tempCanvas.width = canvas.width;
-        tempCanvas.height = canvas.height;
-      }
-      
-      tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
-      tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
-      tempCtx.rotate(currentRotation * Math.PI / 180);
-      tempCtx.translate(-canvas.width / 2, -canvas.height / 2);
-      tempCtx.putImageData(originalImageData, 0, 0);
-      
-      canvas.width = tempCanvas.width;
-      canvas.height = tempCanvas.height;
-      ctx.drawImage(tempCanvas, 0, 0);
-      
-      updateStatus(`Image rotated ${currentRotation} degrees`);
     }
 
     function updateStatus(message, isError = false) {
@@ -437,6 +439,7 @@
       console.log(message);
     }
 
+    // Event listeners
     document.getElementById('fileInput').addEventListener('change', function(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -448,6 +451,7 @@
           const canvas = document.getElementById('inputCanvas');
           const ctx = canvas.getContext('2d');
           
+          // Resize if too large
           const maxSize = 800;
           let width = img.width;
           let height = img.height;
@@ -461,10 +465,6 @@
           canvas.width = width;
           canvas.height = height;
           ctx.drawImage(img, 0, 0, width, height);
-          
-          originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          currentRotation = 0;
-          
           updateStatus("Image loaded. Click 'Match Symbols'");
         };
         img.onerror = () => updateStatus("Failed to load image", true);
@@ -476,7 +476,6 @@
 
     document.getElementById('processBtn').addEventListener('click', matchSymbols);
     document.getElementById('testBtn').addEventListener('click', testWithBlackSquare);
-    document.getElementById('rotateBtn').addEventListener('click', rotateImage);
   </script>
 </body>
 </html>
