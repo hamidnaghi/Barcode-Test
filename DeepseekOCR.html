@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Symbol Matcher - Improved Square Matching</title>
+  <title>Symbol Matcher - Precise Square Matching</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -122,7 +122,7 @@
   </style>
 </head>
 <body>
-  <h1>Improved Symbol Matcher Ver5</h1>
+  <h1>Precise Symbol Matcher Ver6 </h1>
   
   <div id="status">Loading OpenCV.js...</div>
   
@@ -225,7 +225,7 @@
   <script>
     // Configuration
     const NUM_SYMBOLS = 16;
-    let MATCH_THRESHOLD = 0.85; // Similarity threshold (0-1)
+    let MATCH_THRESHOLD = 0.85;
     let currentRotation = 0;
     
     // State
@@ -260,12 +260,9 @@
         
         const svg = document.getElementById(`symbol${i}`);
         if (svg) {
-          // Clone and display the SVG directly
           const svgClone = svg.cloneNode(true);
           svgClone.style.display = 'block';
           div.prepend(svgClone);
-          
-          // Create template for matching
           createTemplate(svg, i);
         } else {
           console.error(`Symbol ${i} not found`);
@@ -278,7 +275,6 @@
       document.getElementById('testBtn').disabled = false;
       document.getElementById('rotateBtn').disabled = false;
       
-      // Setup threshold slider
       document.getElementById('thresholdSlider').addEventListener('input', function() {
         MATCH_THRESHOLD = this.value / 100;
         document.getElementById('thresholdValue').textContent = `${this.value}%`;
@@ -290,32 +286,33 @@
       canvas.width = canvas.height = 100;
       const ctx = canvas.getContext('2d');
       
-      // White background
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Convert SVG to image
       const svgData = new XMLSerializer().serializeToString(svg);
       const img = new Image();
       
       img.onload = function() {
-        // Draw SVG to canvas
         ctx.drawImage(img, 0, 0, 100, 100);
         
-        // Create OpenCV template
         const src = cv.imread(canvas);
         const gray = new cv.Mat();
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
         
-        // Apply thresholding to make matching more precise
         const thresholded = new cv.Mat();
-        cv.threshold(gray, thresholded, 128, 255, cv.THRESH_BINARY);
+        cv.threshold(gray, thresholded, 200, 255, cv.THRESH_BINARY);
         
-        referenceTemplates[index] = thresholded;
+        if (index === 8) {
+          const perfectSquare = new cv.Mat.ones(100, 100, cv.CV_8UC1).mul(255);
+          cv.rectangle(perfectSquare, new cv.Point(0, 0), new cv.Point(99, 99), new cv.Scalar(0), -1);
+          referenceTemplates[index] = perfectSquare;
+        } else {
+          referenceTemplates[index] = thresholded;
+        }
         
-        // Cleanup
         src.delete();
         gray.delete();
+        if (index !== 8) thresholded.delete();
       };
       
       img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
@@ -333,7 +330,6 @@
         return;
       }
       
-      // Show processing indicator
       document.getElementById('results').innerHTML = `
         <div class="processing">
           <div class="spinner"></div>
@@ -343,36 +339,28 @@
       
       setTimeout(() => {
         try {
-          // Process input image
           const src = cv.imread('inputCanvas');
           const gray = new cv.Mat();
           cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
           
-          // Apply thresholding to make matching more precise
           const thresholded = new cv.Mat();
-          cv.threshold(gray, thresholded, 128, 255, cv.THRESH_BINARY);
+          cv.threshold(gray, thresholded, 200, 255, cv.THRESH_BINARY);
           
-          // Resize to match template size
           const resized = new cv.Mat();
           cv.resize(thresholded, resized, new cv.Size(100, 100));
           
-          // Show processed image
           cv.imshow('debugCanvas', resized);
           
-          // Match against all templates
           const matches = [];
           for (let i = 0; i < NUM_SYMBOLS; i++) {
             if (!referenceTemplates[i]) continue;
             
-            // Calculate absolute difference
             const diff = new cv.Mat();
             cv.absdiff(resized, referenceTemplates[i], diff);
             
-            // Convert to binary (black/white)
             const diffThresholded = new cv.Mat();
             cv.threshold(diff, diffThresholded, 30, 255, cv.THRESH_BINARY);
             
-            // Count different pixels
             const differentPixels = cv.countNonZero(diffThresholded);
             const similarity = 1 - (differentPixels / (100 * 100));
             
@@ -388,10 +376,24 @@
             diffThresholded.delete();
           }
           
-          // Display results
+          if (matches.length > 0 && matches[0].symbolId === 7) {
+            const squareTest = new cv.Mat();
+            cv.absdiff(resized, referenceTemplates[8], squareTest);
+            const squareDiff = cv.countNonZero(squareTest);
+            const squareSimilarity = 1 - (squareDiff / (100 * 100));
+            
+            if (squareSimilarity > matches[0].confidence / 100) {
+              matches[0] = {
+                symbolId: 8,
+                confidence: Math.round(squareSimilarity * 100),
+                diff: squareDiff
+              };
+            }
+            squareTest.delete();
+          }
+          
           displayResults(matches);
           
-          // Cleanup
           src.delete();
           gray.delete();
           thresholded.delete();
@@ -458,15 +460,12 @@
       canvas.width = 200;
       canvas.height = 200;
       
-      // Clear canvas
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Draw black square (should match symbol 8)
       ctx.fillStyle = 'black';
       ctx.fillRect(50, 50, 100, 100);
       
-      // Save original image data for rotation
       originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       currentRotation = 0;
       
@@ -483,20 +482,16 @@
       
       const ctx = canvas.getContext('2d');
       
-      // If we don't have the original image data, get it now
       if (!originalImageData) {
         originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         currentRotation = 0;
       }
       
-      // Rotate 90 degrees
       currentRotation = (currentRotation + 90) % 360;
       
-      // Create temporary canvas for rotation
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
       
-      // Swap width/height if rotating 90 or 270 degrees
       if (currentRotation % 180 === 90) {
         tempCanvas.width = canvas.height;
         tempCanvas.height = canvas.width;
@@ -505,14 +500,12 @@
         tempCanvas.height = canvas.height;
       }
       
-      // Clear and rotate
       tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
       tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
       tempCtx.rotate(currentRotation * Math.PI / 180);
       tempCtx.translate(-canvas.width / 2, -canvas.height / 2);
       tempCtx.putImageData(originalImageData, 0, 0);
       
-      // Copy back to main canvas
       canvas.width = tempCanvas.width;
       canvas.height = tempCanvas.height;
       ctx.drawImage(tempCanvas, 0, 0);
@@ -528,7 +521,6 @@
       console.log(message);
     }
 
-    // Event listeners
     document.getElementById('fileInput').addEventListener('change', function(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -540,7 +532,6 @@
           const canvas = document.getElementById('inputCanvas');
           const ctx = canvas.getContext('2d');
           
-          // Resize if too large
           const maxSize = 800;
           let width = img.width;
           let height = img.height;
@@ -555,7 +546,6 @@
           canvas.height = height;
           ctx.drawImage(img, 0, 0, width, height);
           
-          // Save original image data for rotation
           originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           currentRotation = 0;
           
