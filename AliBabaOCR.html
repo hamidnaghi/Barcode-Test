@@ -122,7 +122,7 @@
   </style>
 </head>
 <body>
-  <h1>Enhanced Symbol Matcher</h1>
+  <h1>Enhanced Symbol Matcher Ver2 </h1>
 
   <div id="status">Loading OpenCV.js...</div>
 
@@ -253,105 +253,142 @@
       img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
     }
 
-    function matchSymbols() {
-      if (!cvReady) {
-        updateStatus("OpenCV not ready yet", true);
-        return;
-      }
-      const inputCanvas = document.getElementById('inputCanvas');
-      if (!inputCanvas || inputCanvas.width === 0) {
-        updateStatus("Please load an image first", true);
-        return;
+
+
+function matchSymbols() {
+  if (!cvReady) {
+    updateStatus("OpenCV not ready yet", true);
+    return;
+  }
+  const inputCanvas = document.getElementById('inputCanvas');
+  if (!inputCanvas || inputCanvas.width === 0) {
+    updateStatus("Please load an image first", true);
+    return;
+  }
+
+  // Show processing indicator
+  document.getElementById('results').innerHTML = `
+    <div class="processing">
+      <div class="spinner"></div>
+      <p>Processing image...</p>
+    </div>
+  `;
+
+  setTimeout(() => {
+    try {
+      // Read input image
+      const src = cv.imread(inputCanvas);
+
+      // Convert to grayscale
+      const gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+      // Enhance contrast using CLAHE
+      const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
+      const enhanced = new cv.Mat();
+      clahe.apply(gray, enhanced);
+
+      // Resize to template size
+      const resized = new cv.Mat();
+      cv.resize(enhanced, resized, new cv.Size(100, 100));
+
+      // Threshold for better binary features
+      const thresholded = new cv.Mat();
+      cv.threshold(resized, thresholded, 200, 255, cv.THRESH_BINARY);
+
+      // Display processed image
+      cv.imshow('debugCanvas', thresholded);
+
+      // Initialize ORB detector
+      const orb = new cv.ORB();
+
+      // Detect and compute descriptors for input image
+      const kp1 = new cv.KeyPointVector();
+      const des1 = new cv.Mat();
+      orb.detectAndCompute(thresholded, new cv.Mat(), kp1, des1);
+
+      const matches = [];
+
+      // Match against all templates
+      for (let i = 0; i < NUM_SYMBOLS; i++) {
+        if (!referenceTemplates[i]) continue;
+
+        const kp2 = new cv.KeyPointVector();
+        const des2 = new cv.Mat();
+        orb.detectAndCompute(referenceTemplates[i], new cv.Mat(), kp2, des2);
+
+        // Use Brute Force Matcher
+        const matcher = new cv.BFMatcher(cv.NORM_HAMMING);
+        const matchesVec = new cv.DMatchVectorVector();
+        matcher.knnMatch(des1, des2, matchesVec, 2); // k=2
+
+        // Ratio test to filter good matches
+        const goodMatches = [];
+        for (let j = 0; j < matchesVec.size(); ++j) {
+          const matchesRow = matchesVec.get(j);
+          if (matchesRow.size() >= 2 && matchesRow.get(0).distance < 0.7 * matchesRow.get(1).distance) {
+            goodMatches.push(matchesRow.get(0));
+          }
+        }
+
+        // Confidence score based on number of good matches
+        const confidence = Math.min(100, Math.round((goodMatches.length / 50) * 100)); // Normalize
+
+        if (confidence >= MATCH_THRESHOLD * 100) {
+          matches.push({
+            symbolId: i,
+            confidence: confidence,
+            matchesCount: goodMatches.length
+          });
+        }
+
+        // Clean up
+        kp2.delete();
+        des2.delete();
+        matchesVec.delete();
       }
 
+      // Sort by confidence
+      matches.sort((a, b) => b.confidence - a.confidence);
+
+      // Display results
+      displayResults(matches);
+
+      // Cleanup Mats
+      src.delete();
+      gray.delete();
+      enhanced.delete();
+      resized.delete();
+      thresholded.delete();
+      kp1.delete();
+      des1.delete();
+      orb.delete();
+      clahe.delete();
+
+    } catch (err) {
+      console.error("Matching error:", err);
       document.getElementById('results').innerHTML = `
-        <div class="processing">
-          <div class="spinner"></div>
-          <p>Processing image...</p>
+        <div class="error">
+          <h3>Error Processing Image</h3>
+          <p>${err.message}</p>
+          <p>Check console for details</p>
         </div>
       `;
-
-      setTimeout(() => {
-        try {
-          // Read input image
-          const src = cv.imread(inputCanvas);
-          const gray = new cv.Mat();
-          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-
-          // Enhance contrast with CLAHE
-          const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
-          const enhanced = new cv.Mat();
-          clahe.apply(gray, enhanced);
-
-          // Resize and threshold
-          const resized = new cv.Mat();
-          cv.resize(enhanced, resized, new cv.Size(100, 100));
-
-          const thresholded = new cv.Mat();
-          cv.threshold(resized, thresholded, 200, 255, cv.THRESH_BINARY);
-
-          cv.imshow('debugCanvas', thresholded);
-
-          const orb = new cv.ORB();
-          let kp1 = new cv.KeyPointVector();
-          let des1 = new cv.Mat();
-          orb.detectAndCompute(thresholded, new cv.Mat(), kp1, des1);
-
-          const matches = [];
-
-          for (let i = 0; i < NUM_SYMBOLS; i++) {
-            if (!referenceTemplates[i]) continue;
-
-            let kp2 = new cv.KeyPointVector();
-            let des2 = new cv.Mat();
-            orb.detectAndCompute(referenceTemplates[i], new cv.Mat(), kp2, des2);
-
-            // Match descriptors
-            let matcher = new cv.BFMatcher(cv.NORM_HAMMING);
-            let matchesVec = new cv.DMatchVectorVector();
-            matcher.knnMatch(des1, des2, matchesVec, 2);
-
-            // Ratio test
-            let goodMatches = [];
-            for (let j = 0; j < matchesVec.size(); ++j) {
-              let matchesRow = matchesVec.get(j);
-              if (matchesRow.size() > 1 && matchesRow.get(0).distance < 0.7 * matchesRow.get(1).distance) {
-                goodMatches.push(matchesRow.get(0));
-              }
-            }
-
-            let confidence = Math.min(100, Math.round((goodMatches.length / 50) * 100)); // Normalize
-
-            if (confidence >= MATCH_THRESHOLD * 100) {
-              matches.push({
-                symbolId: i,
-                confidence: confidence,
-                matchesCount: goodMatches.length
-              });
-            }
-
-            kp2.delete(); des2.delete(); matchesVec.delete();
-          }
-
-          displayResults(matches);
-
-          // Cleanup
-          src.delete(); gray.delete(); enhanced.delete(); resized.delete(); thresholded.delete();
-          kp1.delete(); des1.delete(); orb.delete(); clahe.delete();
-
-        } catch (err) {
-          console.error("Matching error:", err);
-          document.getElementById('results').innerHTML = `
-            <div class="error">
-              <h3>Error Processing Image</h3>
-              <p>${err.message}</p>
-              <p>Check console for details</p>
-            </div>
-          `;
-          updateStatus("Error during processing", true);
-        }
-      }, 100);
+      updateStatus("Error during processing", true);
     }
+  }, 100);
+}
+
+
+
+
+
+
+
+
+
+
+
 
     function displayResults(matches) {
       if (matches.length > 0) {
